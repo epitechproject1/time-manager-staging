@@ -7,4 +7,3 @@ exclude =
     __pycache__,
     .venv,
     migrations
-max-complexity = 10

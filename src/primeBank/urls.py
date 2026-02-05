@@ -1,17 +1,18 @@
 from django.contrib import admin
-from django.urls import path
+from django.urls import include, path
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularRedocView,
     SpectacularSwaggerView,
 )
 
-from primeBank.views import HealthCheckView
+from .views import HealthCheckView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("", HealthCheckView.as_view(), name="health-check"),
+    # OpenAPI / Swagger
     path("schema/", SpectacularAPIView.as_view(), name="schema"),
+    path("", HealthCheckView.as_view(), name="health-check"),
     path(
         "docs/",
         SpectacularSwaggerView.as_view(url_name="schema"),
@@ -22,4 +23,6 @@ urlpatterns = [
         SpectacularRedocView.as_view(url_name="schema"),
         name="redoc",
     ),
+    # API
+    path("api/", include("comments.urls")),
 ]
