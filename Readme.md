@@ -261,12 +261,3 @@ Ce projet suit des standards professionnels :
 - prêt pour le travail en équipe et la production
 
 ---
-
-👉 **Si tu veux, je peux aussi te fournir :**
-
-- `CONTRIBUTING.md`
-- template de PR
-- roadmap technique
-- checklist de release
-
-**Dis-moi** 👌
