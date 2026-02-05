@@ -3,9 +3,17 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+# =============================================================================
+# BASE
+# =============================================================================
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 load_dotenv()
+
+# =============================================================================
+# SECURITY
+# =============================================================================
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
@@ -18,20 +26,27 @@ ALLOWED_HOSTS = os.getenv(
     "localhost,127.0.0.1",
 ).split(",")
 
+# =============================================================================
+# APPLICATIONS
+# =============================================================================
+
 INSTALLED_APPS = [
-    # Django
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    # Third-party
     "rest_framework",
     "rest_framework.authtoken",
     "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
+    "primeBank",
 ]
+
+# =============================================================================
+# MIDDLEWARE
+# =============================================================================
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -43,8 +58,47 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
+# =============================================================================
+# URLS / WSGI
+# =============================================================================
+
 ROOT_URLCONF = "primeBank.urls"
 WSGI_APPLICATION = "primeBank.wsgi.application"
+
+# =============================================================================
+# TEMPLATES
+# =============================================================================
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [BASE_DIR / "templates"],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.debug",
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
+    },
+]
+
+# =============================================================================
+# DATABASE (DEV PAR DÉFAUT)
+# =============================================================================
+
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "db.sqlite3",
+    }
+}
+
+# =============================================================================
+# I18N
+# =============================================================================
 
 LANGUAGE_CODE = "fr-fr"
 TIME_ZONE = "Europe/Paris"
@@ -52,12 +106,23 @@ TIME_ZONE = "Europe/Paris"
 USE_I18N = True
 USE_TZ = True
 
+# =============================================================================
+# STATIC FILES
+# =============================================================================
+
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+# =============================================================================
+# PK
+# =============================================================================
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# 🔐 Exports explicites (important pour flake8 & lisibilité)
+# =============================================================================
+# EXPORTS EXPLICITES (OBLIGATOIRES)
+# =============================================================================
+
 __all__ = [
     "BASE_DIR",
     "SECRET_KEY",
@@ -67,6 +132,8 @@ __all__ = [
     "MIDDLEWARE",
     "ROOT_URLCONF",
     "WSGI_APPLICATION",
+    "TEMPLATES",
+    "DATABASES",
     "LANGUAGE_CODE",
     "TIME_ZONE",
     "USE_I18N",

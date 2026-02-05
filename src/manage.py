@@ -1,70 +1,71 @@
 #!/usr/bin/env python
+"""Django's command-line utility for administrative tasks."""
+
 import os
+import subprocess
 import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 
-def bootstrap_sqlite_and_admin():
+def bootstrap_sqlite_and_admin() -> None:
     """
+    DEV uniquement :
     - Charge le .env
     - Applique les migrations
-    - Crée un superuser si absent
-    (DEV uniquement)
+    - Crée un superuser automatiquement (si absent)
     """
 
-    # 📦 Charger le .env explicitement
-    BASE_DIR = Path(__file__).resolve().parent
-    load_dotenv(BASE_DIR / ".env")
+    # On ne bootstrap que pour runserver
+    if len(sys.argv) < 2 or sys.argv[1] != "runserver":
+        return
+
+    # Évite la double exécution avec le reloader
+    if os.environ.get("RUN_MAIN") != "true":
+        return
+
+    # Charger le .env depuis la racine du repo
+    repo_root = Path(__file__).resolve().parent.parent
+    load_dotenv(repo_root / ".env", override=False)
 
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "primeBank.settings.dev")
 
-    try:
-        import django
+    # Variables d'env pour le superuser
+    username = os.getenv("DJANGO_SUPERUSER_USERNAME")
+    password = os.getenv("DJANGO_SUPERUSER_PASSWORD")
+    email = os.getenv("DJANGO_SUPERUSER_EMAIL", "")
 
-        django.setup()
+    if not username or not password:
+        print("⚠️ Superuser non créé (variables d'environnement manquantes)")
+        return
 
-        from django.conf import settings
-        from django.contrib.auth import get_user_model
-        from django.core.management import call_command
+    print("🔄 Vérification des migrations…")
+    subprocess.run(
+        [sys.executable, "manage.py", "migrate"],
+        check=True,
+    )
 
-        # Sécurité : uniquement SQLite
-        db = settings.DATABASES["default"]
-        if db["ENGINE"] != "django.db.backends.sqlite3":
-            return
-
-        # 1️⃣ Appliquer les migrations manquantes
-        print("🔄 Vérification des migrations…")
-        call_command("migrate", interactive=False, verbosity=0)
-
-        # 2️⃣ Récupérer les variables sensibles depuis l'env
-        username = os.getenv("DJANGO_SUPERUSER_USERNAME")
-        email = os.getenv("DJANGO_SUPERUSER_EMAIL")
-        password = os.getenv("DJANGO_SUPERUSER_PASSWORD")
-
-        if not all([username, email, password]):
-            print("⚠️ Superuser non créé (variables d'environnement manquantes)")
-            return
-
-        # 3️⃣ Créer le superuser s'il n'existe pas
-        User = get_user_model()
-
-        if not User.objects.filter(username=username).exists():
-            print(f"👤 Création du superuser {username}")
-            User.objects.create_superuser(
-                username=username,
-                email=email,
-                password=password,
-            )
-        else:
-            print(f"👤 Superuser déjà existant : {username}")
-
-    except Exception as e:
-        print("❌ Erreur bootstrap Django :", e)
+    print("👤 Vérification du superuser…")
+    subprocess.run(
+        [
+            sys.executable,
+            "manage.py",
+            "createsuperuser",
+            "--noinput",
+            "--username",
+            username,
+            "--email",
+            email,
+        ],
+        env={**os.environ, "DJANGO_SUPERUSER_PASSWORD": password},
+        check=False,  # s'il existe déjà, Django renvoie une erreur → on ignore
+    )
 
 
-def main():
+def main() -> None:
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "primeBank.settings.dev")
+
     bootstrap_sqlite_and_admin()
 
     from django.core.management import execute_from_command_line
