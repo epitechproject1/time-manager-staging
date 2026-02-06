@@ -39,8 +39,7 @@ def bootstrap_dev_and_admin() -> None:
         print("⚠️ Superuser non créé (variables d'environnement manquantes)")
         return
 
-    # Initialiser Django avant d'utiliser call_command
-    #  ORM (corrige AppRegistryNotReady)
+    # Initialiser Django avant d'utiliser call_command / ORM
     import django
 
     django.setup()
@@ -54,9 +53,12 @@ def bootstrap_dev_and_admin() -> None:
     print("👤 Vérification du superuser…")
     User = get_user_model()
 
-    # Si ton projet utilise email comme identifiant, adapte le filtre (email=email)
     if not User.objects.filter(username=username).exists():
-        User.objects.create_superuser(username=username, email=email, password=password)
+        User.objects.create_superuser(
+            username=username,
+            email=email,
+            password=password,
+        )
         print("✅ Superuser créé.")
     else:
         print("ℹ️ Superuser existe déjà.")
