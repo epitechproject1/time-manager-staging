@@ -39,7 +39,6 @@ def bootstrap_sqlite_and_admin() -> None:
         print("⚠️ Admin non créé (variables manquantes)")
         return
 
-    # ⚠️ INITIALISER DJANGO AVANT TOUT
     import django
 
     django.setup()
@@ -65,9 +64,6 @@ def bootstrap_sqlite_and_admin() -> None:
         last_name=last_name,
         role=UserRole.ADMIN,
     )
-
-    print("🚀 Utilisateur ADMIN créé avec succès")
-
 
 def main() -> None:
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "primeBank.settings.dev")
