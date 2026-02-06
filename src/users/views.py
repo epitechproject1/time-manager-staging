@@ -1,12 +1,10 @@
-from rest_framework.viewsets import ModelViewSet
 from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework.viewsets import ModelViewSet
+
 from .models import User
 from .permissions import IsAdminForCreateOtherwiseReadOnly
-from .serializers import (
-    UserCreateSerializer,
-    UserSerializer,
-    UserUpdateSerializer,
-)
+from .serializers import UserCreateSerializer, UserSerializer, UserUpdateSerializer
+
 
 @extend_schema_view(
     list=extend_schema(

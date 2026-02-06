@@ -1,9 +1,9 @@
-from django.db import models
 from django.contrib.auth.models import (
     AbstractBaseUser,
-    PermissionsMixin,
     BaseUserManager,
+    PermissionsMixin,
 )
+from django.db import models
 
 from .constants import UserRole
 
@@ -25,7 +25,6 @@ class UserManager(BaseUserManager):
         extra_fields.setdefault("role", UserRole.ADMIN)
 
         return self.create_user(email, password, **extra_fields)
-
 
 
 class User(AbstractBaseUser, PermissionsMixin):

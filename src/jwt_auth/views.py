@@ -1,13 +1,15 @@
 from django.contrib.auth.hashers import check_password
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework import status
 from drf_spectacular.utils import extend_schema
+from rest_framework import status
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
-from .serializers import LoginSerializer, LogoutSerializer
+
 from users.models import User
+
+from .serializers import LoginSerializer, LogoutSerializer
 
 
 class LoginView(APIView):
@@ -16,7 +18,7 @@ class LoginView(APIView):
     @extend_schema(
         tags=["Authentication"],
         summary="Connexion utilisateur",
-        description="Authentifie un utilisateur via email/mot de passe et retourne des JWT",
+        description="Authentifie un utilisateur via email/mot de passe",
     )
     def post(self, request):
         serializer = LoginSerializer(data=request.data)

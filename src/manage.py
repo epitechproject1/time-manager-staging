@@ -41,11 +41,13 @@ def bootstrap_sqlite_and_admin() -> None:
 
     # ⚠️ INITIALISER DJANGO AVANT TOUT
     import django
+
     django.setup()
 
     from django.core.management import call_command
-    from users.models import User
+
     from users.constants import UserRole
+    from users.models import User
 
     print("🔄 Vérification des migrations…")
     call_command("migrate", interactive=False)
