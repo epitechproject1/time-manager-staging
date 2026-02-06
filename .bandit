@@ -1,3 +1,0 @@
-[bandit]
-exclude = .venv,migrations
-skips = B101
