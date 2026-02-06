@@ -41,8 +41,14 @@ class Planning(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def clean(self):
-        if self.start_datetime and self.end_datetime and self.end_datetime <= self.start_datetime:
-            raise ValidationError({"end_datetime": "end_datetime must be after start_datetime"})
+        if (
+            self.start_datetime
+            and self.end_datetime
+            and self.end_datetime <= self.start_datetime
+        ):
+            raise ValidationError(
+                {"end_datetime": "end_datetime must be after start_datetime"}
+            )
 
         if not self.user and not self.team_id:
             raise ValidationError("Planning must be linked to a user or a team_id")
