@@ -39,7 +39,7 @@ def bootstrap_dev_and_admin() -> None:
         print("⚠️ Superuser non créé (variables d'environnement manquantes)")
         return
 
-    # Initialiser Django avant d'utiliser call_command 
+    # Initialiser Django avant d'utiliser call_command
     #  ORM (corrige AppRegistryNotReady)
     import django
 
