@@ -40,7 +40,7 @@ def bootstrap_dev_and_admin() -> None:
         return
 
     # Initialiser Django avant d'utiliser call_command
-    # ORM (corrige AppRegistryNotReady)
+    #  ORM (corrige AppRegistryNotReady)
     import django
 
     django.setup()
