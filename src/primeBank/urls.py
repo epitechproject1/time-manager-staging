@@ -25,4 +25,5 @@ urlpatterns = [
     ),
     # API
     path("api/", include("comments.urls")),
+    path("api/", include("departments.urls")),
 ]
