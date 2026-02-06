@@ -65,6 +65,7 @@ def bootstrap_sqlite_and_admin() -> None:
         role=UserRole.ADMIN,
     )
 
+
 def main() -> None:
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "primeBank.settings.dev")
 
