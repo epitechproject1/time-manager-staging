@@ -21,6 +21,8 @@ if not SECRET_KEY:
 
 DEBUG = False
 
+AUTH_USER_MODEL = "users.User"
+
 ALLOWED_HOSTS = os.getenv(
     "ALLOWED_HOSTS",
     "localhost,127.0.0.1",
@@ -42,6 +44,8 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
     "primeBank",
+    "jwt_auth",
+    "users",
     "comments",
 ]
 
@@ -128,6 +132,7 @@ __all__ = [
     "BASE_DIR",
     "SECRET_KEY",
     "DEBUG",
+    "AUTH_USER_MODEL",
     "ALLOWED_HOSTS",
     "INSTALLED_APPS",
     "MIDDLEWARE",
