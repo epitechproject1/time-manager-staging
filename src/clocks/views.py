@@ -1,6 +1,8 @@
-from rest_framework import viewsets, permissions
+from rest_framework import permissions, viewsets
+
 from .models import Clock
 from .serializers import ClockSerializer
+
 
 class ClockViewSet(viewsets.ModelViewSet):
     queryset = Clock.objects.all()
