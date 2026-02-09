@@ -1,12 +1,11 @@
 from django.conf import settings
-from django.core.exceptions import ValidationError
 from django.db import models
 
 
 class PlanningType(models.TextChoices):
     SHIFT = "SHIFT", "Shift"
-    MEETING = "MEETING", "Meeting"
-    PTO = "PTO", "Paid time off"
+    LEAVE = "LEAVE", "Leave"
+    EVENT = "EVENT", "Event"
 
 
 class WorkMode(models.TextChoices):
@@ -22,36 +21,23 @@ class Planning(models.Model):
     start_datetime = models.DateTimeField()
     end_datetime = models.DateTimeField()
 
-    planning_type = models.CharField(max_length=20, choices=PlanningType.choices)
-    work_mode = models.CharField(max_length=20, choices=WorkMode.choices)
-
-    # user_id existe dans le diagramme
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True,
-        related_name="plannings",
+    planning_type = models.CharField(
+        max_length=20, choices=PlanningType.choices, default=PlanningType.SHIFT
+    )
+    work_mode = models.CharField(
+        max_length=20, choices=WorkMode.choices, default=WorkMode.ONSITE
     )
 
-    # team_id existe dans le diagramme, mais l'app teams n'est pas encore dispo
-    team_id = models.BigIntegerField(null=True, blank=True, db_index=True)
+    user = models.ForeignKey(
+    settings.AUTH_USER_MODEL,
+    on_delete=models.CASCADE,
+    related_name="plannings",
+    null=True,
+    blank=True,
+    )
+
+    # temporaire tant que Team n'est pas livré
+    team_id = models.IntegerField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-
-    def clean(self):
-        if (
-            self.start_datetime
-            and self.end_datetime
-            and self.end_datetime <= self.start_datetime
-        ):
-            raise ValidationError(
-                {"end_datetime": "end_datetime must be after start_datetime"}
-            )
-
-        if not self.user and not self.team_id:
-            raise ValidationError("Planning must be linked to a user or a team_id")
-
-    def __str__(self):
-        return self.title

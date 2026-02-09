@@ -4,3 +4,10 @@ __pycache__/
 .env
 .idea/
 db.sqlite3
+venv/
+.venv/
+.vscode/
+__pycache__/
+*.pyc
+.env
+.env.*
