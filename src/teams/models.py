@@ -25,7 +25,7 @@ class Teams(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.name}: {self.description[:20]}"
+        return f"{self.name}: {self.description[:50]}"
 
     class Meta:
         db_table = "teams"
