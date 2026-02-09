@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -35,8 +37,6 @@ class PermissionSerializer(serializers.ModelSerializer):
 class PermissionCreateSerializer(serializers.ModelSerializer):
     """
     Serializer de création d'une permission.
-    Le champ `granted_by_user` est automatiquement défini
-    à partir de l'utilisateur authentifié.
     """
 
     class Meta:
@@ -49,10 +49,11 @@ class PermissionCreateSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
-        start_date = attrs.get("start_date")
+        start_date = attrs["start_date"]
         end_date = attrs.get("end_date")
+        today = timezone.now().date()
 
-        if start_date < timezone.now().date():
+        if start_date < today:
             raise serializers.ValidationError(
                 "La date de début ne peut pas être dans le passé."
             )
@@ -71,13 +72,12 @@ class PermissionCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Utilisateur non authentifié.")
 
         validated_data["granted_by_user"] = request.user
-
         return super().create(validated_data)
 
 
 class PermissionUpdateSerializer(serializers.ModelSerializer):
     """
-    Serializer de mise à jour partielle d'une permission.
+    Serializer de mise à jour (PATCH / PUT) d'une permission.
     """
 
     class Meta:
@@ -89,16 +89,21 @@ class PermissionUpdateSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
-        start_date = attrs.get(
-            "start_date",
-            self.instance.start_date,
-        )
-        end_date = attrs.get(
-            "end_date",
-            self.instance.end_date,
-        )
+        instance = self.instance
+        today = timezone.now().date()
 
-        if start_date < timezone.now().date():
+        # 🔒 Reconstruction de l'état final (OBLIGATOIRE en PATCH)
+        start_date = attrs.get("start_date", instance.start_date)
+        end_date = attrs.get("end_date", instance.end_date)
+
+        # 🔒 Sécurisation ultime des types
+        if isinstance(start_date, str):
+            start_date = date.fromisoformat(start_date)
+
+        if isinstance(end_date, str):
+            end_date = date.fromisoformat(end_date)
+
+        if start_date < today:
             raise serializers.ValidationError(
                 "La date de début ne peut pas être dans le passé."
             )

@@ -42,13 +42,11 @@ class Permission(models.Model):
             models.Index(fields=["permission_type"]),
             models.Index(fields=["granted_to_user"]),
         ]
-        constraints = [
-            models.CheckConstraint(
-                check=models.Q(end_date__gte=models.F("start_date"))
-                | models.Q(end_date__isnull=True),
-                name="permission_end_date_after_start_date",
-            ),
-        ]
+        models.CheckConstraint(
+            condition=models.Q(end_date__gte=models.F("start_date"))
+            | models.Q(end_date__isnull=True),
+            name="permission_end_date_after_start_date",
+        )
 
     def __str__(self) -> str:
         return (
