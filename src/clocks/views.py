@@ -1,7 +1,9 @@
-from rest_framework import viewsets, permissions
 from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework import permissions, viewsets
+
 from .models import Clock
 from .serializers import ClockSerializer
+
 
 @extend_schema_view(
     list=extend_schema(
