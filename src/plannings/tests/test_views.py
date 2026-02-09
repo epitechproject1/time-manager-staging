@@ -14,7 +14,9 @@ def test_list_plannings_unauthenticated(api_client):
 
 
 @pytest.mark.django_db
-def test_list_plannings_authenticated_only_own(api_client, normal_user, planning_owned_by_normal_user, planning_owned_by_admin):
+def test_list_plannings_authenticated_only_own(
+    api_client, normal_user, planning_owned_by_normal_user, planning_owned_by_admin
+):
     api_client.force_authenticate(user=normal_user)
 
     res = api_client.get(reverse("planning-list"))
@@ -47,7 +49,9 @@ def test_create_planning_user_creates_for_self(api_client, normal_user):
 
 
 @pytest.mark.django_db
-def test_create_planning_user_cannot_create_for_other(api_client, normal_user, admin_user):
+def test_create_planning_user_cannot_create_for_other(
+    api_client, normal_user, admin_user
+):
     api_client.force_authenticate(user=normal_user)
 
     res = api_client.post(
@@ -66,7 +70,9 @@ def test_create_planning_user_cannot_create_for_other(api_client, normal_user, a
 
 
 @pytest.mark.django_db
-def test_update_planning_forbidden_if_not_owner(api_client, normal_user, planning_owned_by_admin):
+def test_update_planning_forbidden_if_not_owner(
+    api_client, normal_user, planning_owned_by_admin
+):
     api_client.force_authenticate(user=normal_user)
 
     res = api_client.patch(
