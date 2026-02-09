@@ -50,7 +50,7 @@ INSTALLED_APPS = [
     "comments",
     "permissions",
     "departments",
-    "teams",
+    "clocks",
 ]
 
 # =============================================================================
