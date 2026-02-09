@@ -1,5 +1,5 @@
-from django.db import models
 from django.conf import settings
+from django.db import models
 
 
 class Teams(models.Model):
@@ -10,16 +10,16 @@ class Teams(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='owned_teams',
-        verbose_name='Propriétaire'
+        related_name="owned_teams",
+        verbose_name="Propriétaire",
     )
     department = models.ForeignKey(
-        'departments.Department',
+        "departments.Department",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='teams',
-        verbose_name='Département'
+        related_name="teams",
+        verbose_name="Département",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -28,7 +28,7 @@ class Teams(models.Model):
         return f"{self.name}: {self.description[:20]}"
 
     class Meta:
-        db_table = 'teams'
-        verbose_name = 'Team'
-        verbose_name_plural = 'Teams'
-        ordering = ['-created_at']
+        db_table = "teams"
+        verbose_name = "Team"
+        verbose_name_plural = "Teams"
+        ordering = ["-created_at"]

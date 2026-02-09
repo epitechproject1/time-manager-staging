@@ -52,7 +52,7 @@ class TeamsViewSet(ModelViewSet):
 
     def perform_create(self, serializer):
 
-        if not serializer.validated_data.get('owner'):
+        if not serializer.validated_data.get("owner"):
             serializer.save(owner=self.request.user)
         else:
             serializer.save()
@@ -61,15 +61,15 @@ class TeamsViewSet(ModelViewSet):
 
         queryset = super().get_queryset()
 
-        department_id = self.request.query_params.get('department')
+        department_id = self.request.query_params.get("department")
         if department_id:
             queryset = queryset.filter(department_id=department_id)
 
-        owner_id = self.request.query_params.get('owner')
+        owner_id = self.request.query_params.get("owner")
         if owner_id:
             queryset = queryset.filter(owner_id=owner_id)
 
-        if self.request.query_params.get('my_teams'):
+        if self.request.query_params.get("my_teams"):
             queryset = queryset.filter(owner=self.request.user)
 
         return queryset
@@ -79,7 +79,7 @@ class TeamsViewSet(ModelViewSet):
         summary="Mes équipes",
         description="Récupère uniquement les équipes dont l'utilisateur co est pro",
     )
-    @action(detail=False, methods=['get'], url_path='my-teams')
+    @action(detail=False, methods=["get"], url_path="my-teams")
     def my_teams(self, request):
 
         teams = self.get_queryset().filter(owner=request.user)
