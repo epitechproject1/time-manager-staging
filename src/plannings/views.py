@@ -3,6 +3,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.viewsets import ModelViewSet
 
 from users.constants import UserRole
+
 from .models import Planning
 from .permissions import IsAdminOrOwner
 from .serializers import PlanningSerializer

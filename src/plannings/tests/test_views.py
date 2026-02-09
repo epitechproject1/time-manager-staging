@@ -1,8 +1,9 @@
+from datetime import timedelta
+
 import pytest
 from django.urls import reverse
-from rest_framework import status
 from django.utils import timezone
-from datetime import timedelta
+from rest_framework import status
 
 from plannings.models import Planning
 
