@@ -1,5 +1,6 @@
-from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.test import TestCase
+
 from departments.models import Department
 from teams.models import Teams
 from teams.serializers import TeamsSerializer
@@ -14,7 +15,7 @@ class TeamsSerializerTest(TestCase):
             email="testuser@example.com",
             password="password123",
             first_name="Test",
-            last_name="User"
+            last_name="User",
         )
 
         self.department = Department.objects.create(name="IT Department")
@@ -23,7 +24,7 @@ class TeamsSerializerTest(TestCase):
             name="Backend Team",
             description="Team responsible for backend services",
             owner=self.user,
-            department=self.department
+            department=self.department,
         )
 
     def test_serializer_fields(self):
@@ -47,8 +48,7 @@ class TeamsSerializerTest(TestCase):
     def test_serializer_without_owner_and_department(self):
         """Test le serializer quand owner et department sont null"""
         team = Teams.objects.create(
-            name="No Owner Team",
-            description="Team without owner and department"
+            name="No Owner Team", description="Team without owner and department"
         )
         serializer = TeamsSerializer(team)
         data = serializer.data

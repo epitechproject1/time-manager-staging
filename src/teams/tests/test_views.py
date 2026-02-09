@@ -1,7 +1,8 @@
+from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework import status
-from rest_framework.test import APITestCase, APIClient
-from django.contrib.auth import get_user_model
+from rest_framework.test import APIClient, APITestCase
+
 from departments.models import Department
 from teams.models import Teams
 
@@ -15,14 +16,14 @@ class TeamsViewSetTest(APITestCase):
             email="user1@example.com",
             password="password123",
             first_name="User",
-            last_name="One"
+            last_name="One",
         )
 
         self.user2 = User.objects.create_user(
             email="user2@example.com",
             password="password123",
             first_name="User",
-            last_name="Two"
+            last_name="Two",
         )
 
         self.department = Department.objects.create(name="IT Department")
@@ -31,13 +32,13 @@ class TeamsViewSetTest(APITestCase):
             name="Backend Team",
             description="Team backend",
             owner=self.user,
-            department=self.department
+            department=self.department,
         )
         self.team2 = Teams.objects.create(
             name="Frontend Team",
             description="Team frontend",
             owner=self.user2,
-            department=self.department
+            department=self.department,
         )
 
         self.client = APIClient()
@@ -92,7 +93,7 @@ class TeamsViewSetTest(APITestCase):
             "name": "Updated Team",
             "description": "Updated description",
             "owner": self.user.id,
-            "department": self.department.id
+            "department": self.department.id,
         }
         response = self.client.put(url, payload)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
