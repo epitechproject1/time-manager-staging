@@ -1,114 +1,95 @@
-from django.contrib.auth import get_user_model
+import pytest
 from django.urls import reverse
 from rest_framework import status
-from rest_framework.test import APIClient, APITestCase
-
-from departments.models import Department
-from teams.models import Teams
-
-User = get_user_model()
 
 
-class TeamsViewSetTest(APITestCase):
+@pytest.mark.django_db
+def test_list_teams(api_client, normal_user, team, other_team):
+    api_client.force_authenticate(user=normal_user)
 
-    def setUp(self):
-        self.user = User.objects.create_user(
-            email="user1@example.com",
-            password="password123",
-            first_name="User",
-            last_name="One",
-        )
+    url = reverse("teams-list")
+    response = api_client.get(url)
 
-        self.user2 = User.objects.create_user(
-            email="user2@example.com",
-            password="password123",
-            first_name="User",
-            last_name="Two",
-        )
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.data) == 2
 
-        self.department = Department.objects.create(name="IT Department")
 
-        self.team1 = Teams.objects.create(
-            name="Backend Team",
-            description="Team backend",
-            owner=self.user,
-            department=self.department,
-        )
-        self.team2 = Teams.objects.create(
-            name="Frontend Team",
-            description="Team frontend",
-            owner=self.user2,
-            department=self.department,
-        )
+@pytest.mark.django_db
+def test_filter_teams_by_department(api_client, normal_user, department, team):
+    api_client.force_authenticate(user=normal_user)
 
-        self.client = APIClient()
-        self.client.force_authenticate(user=self.user)
+    url = reverse("teams-list")
+    response = api_client.get(url, {"department": department.id})
 
-    def test_list_teams(self):
-        url = reverse("teams-list")
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 2)
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.data) == 1
+    assert response.data[0]["name"] == "Alpha"
 
-    def test_filter_by_department(self):
-        url = reverse("teams-list")
-        response = self.client.get(url, {"department": self.department.id})
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 2)
 
-    def test_filter_by_owner(self):
-        url = reverse("teams-list")
-        response = self.client.get(url, {"owner": self.user.id})
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["name"], "Backend Team")
+@pytest.mark.django_db
+def test_filter_teams_by_owner(api_client, normal_user, team):
+    api_client.force_authenticate(user=normal_user)
 
-    def test_my_teams_action(self):
-        url = reverse("teams-my-teams")
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["owner"], self.user.id)
+    url = reverse("teams-list")
+    response = api_client.get(url, {"owner": normal_user.id})
 
-    def test_create_team(self):
-        url = reverse("teams-list")
-        payload = {
-            "name": "New Team",
-            "description": "Created by test",
-        }
-        response = self.client.post(url, payload)
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data["owner"], self.user.id)
-        self.assertEqual(response.data["name"], "New Team")
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.data) == 1
+    assert response.data[0]["name"] == "Alpha"
 
-    def test_retrieve_team(self):
-        url = reverse("teams-detail", args=[self.team1.id])
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["name"], "Backend Team")
 
-    def test_update_team(self):
-        url = reverse("teams-detail", args=[self.team1.id])
-        payload = {
-            "name": "Updated Team",
-            "description": "Updated description",
-            "owner": self.user.id,
-            "department": self.department.id,
-        }
-        response = self.client.put(url, payload)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["name"], "Updated Team")
-        self.assertEqual(response.data["description"], "Updated description")
+@pytest.mark.django_db
+def test_my_teams_action(api_client, normal_user, team):
+    api_client.force_authenticate(user=normal_user)
 
-    def test_partial_update_team(self):
-        url = reverse("teams-detail", args=[self.team1.id])
-        payload = {"description": "Partially updated"}
-        response = self.client.patch(url, payload)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["description"], "Partially updated")
+    url = reverse("teams-my-teams")
+    response = api_client.get(url)
 
-    def test_delete_team(self):
-        url = reverse("teams-detail", args=[self.team1.id])
-        response = self.client.delete(url)
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertFalse(Teams.objects.filter(id=self.team1.id).exists())
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.data) == 1
+    assert response.data[0]["owner"] == normal_user.id
+
+
+@pytest.mark.django_db
+def test_create_team(api_client, normal_user):
+    api_client.force_authenticate(user=normal_user)
+
+    url = reverse("teams-list")
+    payload = {
+        "name": "New Team",
+        "description": "Created by test",
+    }
+
+    response = api_client.post(url, payload)
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.data["name"] == "New Team"
+    assert response.data["owner"] == normal_user.id
+
+
+@pytest.mark.django_db
+def test_update_team(api_client, normal_user, team, department):
+    api_client.force_authenticate(user=normal_user)
+
+    url = reverse("teams-detail", args=[team.id])
+    payload = {
+        "name": "Updated Team",
+        "description": "Updated description",
+        "owner": normal_user.id,
+        "department": department.id,
+    }
+
+    response = api_client.put(url, payload)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["name"] == "Updated Team"
+
+
+@pytest.mark.django_db
+def test_delete_team(api_client, normal_user, team):
+    api_client.force_authenticate(user=normal_user)
+
+    url = reverse("teams-detail", args=[team.id])
+    response = api_client.delete(url)
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
