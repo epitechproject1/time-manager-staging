@@ -1,6 +1,7 @@
 import pytest
-from teams.serializers import TeamsSerializer
+
 from teams.models import Teams
+from teams.serializers import TeamsSerializer
 
 
 @pytest.mark.django_db
