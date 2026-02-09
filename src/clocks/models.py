@@ -19,5 +19,5 @@ class Clock(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    def __str__(self):
-        return f"{self.user.username} - {self.work_date}"
+    def __str__(self) -> str:
+        return f"{self.user.email} - {self.work_date}"
