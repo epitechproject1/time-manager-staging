@@ -1,6 +1,7 @@
 import pytest
+
 from departments.serializers import DepartmentSerializer
-from departments.models import Department
+
 
 @pytest.mark.django_db
 def test_department_serializer_read_only_fields(department):
@@ -11,6 +12,7 @@ def test_department_serializer_read_only_fields(department):
     assert data["name"] == department.name
     assert "created_at" in data
     assert "updated_at" in data
+
 
 @pytest.mark.django_db
 def test_department_serializer_invalid_data(admin_user):
