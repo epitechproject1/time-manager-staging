@@ -4,9 +4,9 @@ from .models import Teams
 
 
 class TeamsSerializer(serializers.ModelSerializer):
-    owner_name = serializers.CharField(source="owner.get_full_name", read_only=True)
-    owner_email = serializers.EmailField(source="owner.email", read_only=True)
-    department_name = serializers.CharField(source="department.name", read_only=True)
+    owner_name = serializers.SerializerMethodField()
+    owner_email = serializers.SerializerMethodField()
+    department_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Teams
@@ -24,8 +24,13 @@ class TeamsSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
-    def get_full_name(self, obj):
-        """Méthode helper si owner.get_full_name() n'existe pas"""
+    def get_owner_name(self, obj):
         if obj.owner:
-            return f"{obj.owner.first_name} {obj.owner.last_name}"
+            return f"{obj.owner.first_name} {obj.owner.last_name}".strip()
         return None
+
+    def get_owner_email(self, obj):
+        return obj.owner.email if obj.owner else None
+
+    def get_department_name(self, obj):
+        return obj.department.name if obj.department else None
