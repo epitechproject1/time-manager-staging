@@ -4,8 +4,8 @@ from django.db import models
 
 class PlanningType(models.TextChoices):
     SHIFT = "SHIFT", "Shift"
-    LEAVE = "LEAVE", "Leave"
-    EVENT = "EVENT", "Event"
+    MEETING = "MEETING", "Meeting"
+    PTO = "PTO", "Paid time off"
 
 
 class WorkMode(models.TextChoices):
@@ -29,15 +29,28 @@ class Planning(models.Model):
     )
 
     user = models.ForeignKey(
-    settings.AUTH_USER_MODEL,
-    on_delete=models.CASCADE,
-    related_name="plannings",
-    null=True,
-    blank=True,
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="plannings",
+        null=True,
+        blank=True,
     )
 
-    # temporaire tant que Team n'est pas livré
-    team_id = models.IntegerField(null=True, blank=True)
+    # ✅ FK vers Teams (nouveau modèle)
+    team = models.ForeignKey(
+        "teams.Teams",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="plannings",
+    )
+
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-start_datetime"]
+
+    def __str__(self) -> str:
+        return f"{self.title} ({self.start_datetime} -> {self.end_datetime})"

@@ -49,6 +49,9 @@ INSTALLED_APPS = [
     "comments",
     "departments",
     "plannings",
+    "clocks",
+    "permissions",
+    "teams",
 ]
 
 # =============================================================================
