@@ -31,4 +31,5 @@ urlpatterns = [
     path("api/", include("clocks.urls")),
     path("api/", include("plannings.urls")),
     path("api/", include("permissions.urls")),
+    path("api/teams/", include("teams.urls")),
 ]
