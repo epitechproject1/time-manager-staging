@@ -1,4 +1,7 @@
 from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
 from .models import User
@@ -52,3 +55,18 @@ class UserViewSet(ModelViewSet):
             return UserUpdateSerializer
 
         return UserSerializer
+
+    @extend_schema(summary="Récupérer le profil de l'utilisateur connecté")
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="me",
+        permission_classes=[IsAuthenticated],
+    )
+    def me(self, request):
+        """
+        Retourne les informations de l'utilisateur actuellement connecté.
+        Endpoint: /api/users/me/
+        """
+        serializer = self.get_serializer(request.user)
+        return Response(serializer.data)
