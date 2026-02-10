@@ -61,9 +61,9 @@ jobs:
       # ----------------------------------------------------------------------
       - name: Run Django tests with pytest + coverage
         env:
-          DJANGO_SETTINGS_MODULE: primeBank.settings.base
-        run: |
-          pytest --cov=. --cov-report=xml --cov-fail-under=80
+          DJANGO_SETTINGS_MODULE: primeBank.settings
+          PYTHONPATH: .
+        run: pytest --cov=. --cov-report=xml --cov-fail-under=80
 
       # ----------------------------------------------------------------------
       # SonarCloud
