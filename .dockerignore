@@ -1,0 +1,35 @@
+# Git
+.git
+.gitignore
+
+# CI / IDE
+.github
+.vscode
+.idea
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.mypy_cache/
+.pytest_cache/
+
+# Virtual env
+.venv/
+venv/
+
+# Env files (NEVER COPY SECRETS)
+.env
+.env.*
+
+# Local DB / artifacts
+db.sqlite3
+*.sqlite3
+
+# Static / media generated
+staticfiles/
+media/
+
+# Logs
+*.log

@@ -1,6 +1,6 @@
-import os
 from pathlib import Path
 
+import environ
 from dotenv import load_dotenv
 
 # =============================================================================
@@ -9,22 +9,23 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
+# Charge le .env en local / docker-compose (env_file)
 load_dotenv()
+env = environ.Env()
 
 # =============================================================================
 # SECURITY
 # =============================================================================
 
-SECRET_KEY = os.getenv("SECRET_KEY")
+SECRET_KEY = env("SECRET_KEY", default=None)
 if not SECRET_KEY:
     raise RuntimeError("SECRET_KEY is not set")
 
-DEBUG = False
+DEBUG = env.bool("DEBUG", default=False)
 
-ALLOWED_HOSTS = os.getenv(
-    "ALLOWED_HOSTS",
-    "localhost,127.0.0.1",
-).split(",")
+AUTH_USER_MODEL = "users.User"
+
+ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
 
 # =============================================================================
 # APPLICATIONS
@@ -42,7 +43,14 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
     "primeBank",
+    "jwt_auth",
+    "users",
+    "plannings",
     "comments",
+    "permissions",
+    "departments",
+    "clocks",
+    "teams",
 ]
 
 # =============================================================================
@@ -87,14 +95,14 @@ TEMPLATES = [
 ]
 
 # =============================================================================
-# DATABASE (DEV PAR DÉFAUT)
+# DATABASE
 # =============================================================================
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
-    }
+    "default": env.db(
+        "DATABASE_URL",
+        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+    )
 }
 
 # =============================================================================
@@ -128,6 +136,7 @@ __all__ = [
     "BASE_DIR",
     "SECRET_KEY",
     "DEBUG",
+    "AUTH_USER_MODEL",
     "ALLOWED_HOSTS",
     "INSTALLED_APPS",
     "MIDDLEWARE",
