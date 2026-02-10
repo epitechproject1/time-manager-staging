@@ -66,6 +66,7 @@ def test_update_user_admin(api_client, admin_user, normal_user):
     )
 
     assert response.status_code == status.HTTP_200_OK
+
     normal_user.refresh_from_db()
     assert normal_user.first_name == "Updated"
 

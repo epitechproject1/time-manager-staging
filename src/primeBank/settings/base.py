@@ -45,11 +45,11 @@ INSTALLED_APPS = [
     "primeBank",
     "jwt_auth",
     "users",
-    "comments",
-    "departments",
     "plannings",
-    "clocks",
+    "comments",
     "permissions",
+    "departments",
+    "clocks",
     "teams",
 ]
 
