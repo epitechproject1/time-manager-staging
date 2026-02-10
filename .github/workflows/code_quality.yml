@@ -34,23 +34,41 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install black isort flake8 pep8-naming 
+          pip install black isort flake8 pep8-naming bandit
+          pip install pytest pytest-django pytest-cov coverage
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       # ----------------------------------------------------------------------
       # Black
       # ----------------------------------------------------------------------
       - name: Black (format check)
-        run: black --check src
+        run: black .
 
       # ----------------------------------------------------------------------
       # isort
       # ----------------------------------------------------------------------
       - name: isort (import order)
-        run: isort --check-only src
+        run: isort --check-only .
 
       # ----------------------------------------------------------------------
       # Flake8
       # ----------------------------------------------------------------------
       - name: Flake8 (PEP8, naming, complexity)
-        run: flake8 src
+        run: flake8 .
+
+      # ----------------------------------------------------------------------
+      # Django tests + Coverage (pytest)
+      # ----------------------------------------------------------------------
+      - name: Run Django tests with pytest + coverage
+        env:
+          DJANGO_SETTINGS_MODULE: primeBank.settings.base
+        run: |
+          pytest --cov=. --cov-report=xml --cov-fail-under=80
+
+      # ----------------------------------------------------------------------
+      # SonarCloud
+      # ----------------------------------------------------------------------
+      - name: SonarCloud Scan
+        uses: sonarsource/sonarcloud-github-action@v2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
