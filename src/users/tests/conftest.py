@@ -19,6 +19,7 @@ def admin_user(db):
         last_name="User",
         role=UserRole.ADMIN,
         is_staff=True,
+        is_superuser=True,  # ✅ important pour DRF / admin
     )
 
 
@@ -30,4 +31,5 @@ def normal_user(db):
         first_name="Normal",
         last_name="User",
         role=UserRole.USER,
+        is_staff=False,
     )
