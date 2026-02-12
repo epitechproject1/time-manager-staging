@@ -1,3 +1,4 @@
+from django.db.models import Count
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -12,7 +13,7 @@ from .serializers import TeamsSerializer
     list=extend_schema(
         tags=["Teams"],
         summary="Lister les équipes",
-        description="Récupère la liste de toutes les équipes ",
+        description="Récupère la liste de toutes les équipes",
     ),
     retrieve=extend_schema(
         tags=["Teams"],
@@ -41,47 +42,46 @@ from .serializers import TeamsSerializer
     ),
 )
 class TeamsViewSet(ModelViewSet):
-
-    queryset = (
-        Teams.objects.select_related("owner", "department")
-        .all()
-        .order_by("-created_at")
-    )
     serializer_class = TeamsSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        qs = (
+            Teams.objects.all()
+            .select_related("owner", "department")
+            .prefetch_related("members")
+            .annotate(members_count=Count("members", distinct=True))
+            .order_by("-created_at")
+        )
+
+        department_id = self.request.query_params.get("department_id")
+        if department_id:
+            qs = qs.filter(department_id=department_id)
+
+        owner_id = self.request.query_params.get("owner_id")
+        if owner_id:
+            qs = qs.filter(owner_id=owner_id)
+
+        my_teams = self.request.query_params.get("my_teams")
+        if my_teams in ("1", "true", "True", "yes"):
+            qs = qs.filter(owner=self.request.user)
+
+        return qs
+
     def perform_create(self, serializer):
 
-        if not serializer.validated_data.get("owner"):
+        if not serializer.validated_data.get("owner_id"):
             serializer.save(owner=self.request.user)
         else:
             serializer.save()
 
-    def get_queryset(self):
-
-        queryset = super().get_queryset()
-
-        department_id = self.request.query_params.get("department")
-        if department_id:
-            queryset = queryset.filter(department_id=department_id)
-
-        owner_id = self.request.query_params.get("owner")
-        if owner_id:
-            queryset = queryset.filter(owner_id=owner_id)
-
-        if self.request.query_params.get("my_teams"):
-            queryset = queryset.filter(owner=self.request.user)
-
-        return queryset
-
     @extend_schema(
         tags=["Teams"],
         summary="Mes équipes",
-        description="Récupère uniquement les équipes dont l'utilisateur co est pro",
+        description="Récupère les teams dont le prop est l'utilisateur connecté",
     )
     @action(detail=False, methods=["get"], url_path="my-teams")
     def my_teams(self, request):
-
         teams = self.get_queryset().filter(owner=request.user)
         serializer = self.get_serializer(teams, many=True)
         return Response(serializer.data)
