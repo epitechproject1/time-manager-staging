@@ -13,7 +13,8 @@ def test_team_creation(team, normal_user, department):
 
 @pytest.mark.django_db
 def test_team_str_method(team):
-    assert str(team) == "Alpha: Core platform team"
+    expected = f"{team.name}: {team.description[:50]}"
+    assert str(team) == expected
 
 
 @pytest.mark.django_db
