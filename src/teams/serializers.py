@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from jsonschema.exceptions import ValidationError
 from rest_framework import serializers
 
 from departments.models import Department
@@ -78,22 +79,23 @@ class TeamsSerializer(serializers.ModelSerializer):
 
         return team
 
-    def update(self, instance, validated_data):
-        owner_id = validated_data.pop("owner_id", None)
-        department_id = validated_data.pop("department_id", None)
-        members_ids = validated_data.pop("members_ids", None)
+    def validate(self, attrs):
+        """
+        Règle: le responsable (owner) doit toujours faire partie des membres.
+        - Si members_ids est envoyé et ne contient pas l'owner -> erreur
+        - Si on change owner_id, il doit être inclus aussi
+        """
+        instance = getattr(self, "instance", None)
 
-        if owner_id is not None:
-            instance.owner_id = owner_id
-        if department_id is not None:
-            instance.department_id = department_id
+        current_owner_id = instance.owner_id if instance else None
+        new_owner_id = attrs.get("owner_id", current_owner_id)
 
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
+        members_ids = attrs.get("members_ids", None)
 
-        instance.save()
+        if members_ids is not None and new_owner_id is not None:
+            if new_owner_id not in members_ids:
+                raise ValidationError(
+                    {"Impossible de retirer le responsable de l'équipe des membres."}
+                )
 
-        if members_ids is not None:
-            instance.members.set(User.objects.filter(id__in=members_ids))
-
-        return instance
+        return attrs
