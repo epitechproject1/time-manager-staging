@@ -1,5 +1,8 @@
+from datetime import timedelta
+
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import status
 
 from permissions.constants import PermissionType
@@ -19,11 +22,13 @@ def test_list_permissions_authenticated(api_client, normal_user, permission):
 def test_create_permission_admin(api_client, admin_user, normal_user):
     api_client.force_authenticate(user=admin_user)
 
+    future_date = timezone.now().date() + timedelta(days=1)
+
     response = api_client.post(
         reverse("permission-list"),
         data={
             "permission_type": PermissionType.WRITE,
-            "start_date": "2026-02-10",
+            "start_date": future_date,
             "granted_to_user": normal_user.id,
         },
     )
@@ -36,11 +41,13 @@ def test_create_permission_admin(api_client, admin_user, normal_user):
 def test_create_permission_forbidden_for_user(api_client, normal_user):
     api_client.force_authenticate(user=normal_user)
 
+    future_date = timezone.now().date() + timedelta(days=1)
+
     response = api_client.post(
         reverse("permission-list"),
         data={
             "permission_type": PermissionType.WRITE,
-            "start_date": "2026-02-10",
+            "start_date": future_date,
             "granted_to_user": normal_user.id,
         },
     )
