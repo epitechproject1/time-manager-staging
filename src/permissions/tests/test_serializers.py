@@ -1,4 +1,5 @@
 import pytest
+from datetime import timedelta
 from django.utils import timezone
 
 from permissions.constants import PermissionType
@@ -9,12 +10,16 @@ from permissions.serializers import (
 )
 
 
+def choice_value(choice):
+    return getattr(choice, "value", choice)
+
+
 @pytest.mark.django_db
 def test_permission_serializer(permission):
     serializer = PermissionSerializer(permission)
     data = serializer.data
 
-    assert data["permission_type"] == PermissionType.READ
+    assert data["permission_type"] == choice_value(PermissionType.READ)
     assert "granted_by_user" in data
     assert "granted_to_user" in data
 
@@ -23,8 +28,8 @@ def test_permission_serializer(permission):
 def test_permission_create_serializer_valid(admin_user, normal_user):
     serializer = PermissionCreateSerializer(
         data={
-            "permission_type": PermissionType.WRITE,
-            "start_date": timezone.now().date(),
+            "permission_type": choice_value(PermissionType.WRITE),
+            "start_date": timezone.now().date() + timedelta(days=1),
             "granted_to_user": normal_user.id,
         },
         context={"request": type("obj", (), {"user": admin_user})()},
@@ -40,9 +45,9 @@ def test_permission_create_serializer_valid(admin_user, normal_user):
 def test_permission_create_serializer_invalid_dates(admin_user, normal_user):
     serializer = PermissionCreateSerializer(
         data={
-            "permission_type": PermissionType.WRITE,
-            "start_date": "2026-02-10",
-            "end_date": "2026-02-01",
+            "permission_type": choice_value(PermissionType.WRITE),
+            "start_date": (timezone.now().date() + timedelta(days=2)).isoformat(),
+            "end_date": (timezone.now().date() + timedelta(days=1)).isoformat(),
             "granted_to_user": normal_user.id,
         },
         context={"request": type("obj", (), {"user": admin_user})()},
@@ -53,13 +58,18 @@ def test_permission_create_serializer_invalid_dates(admin_user, normal_user):
 
 @pytest.mark.django_db
 def test_permission_update_serializer(permission):
+    future_start = timezone.now().date() + timedelta(days=1)
+
     serializer = PermissionUpdateSerializer(
         permission,
-        data={"permission_type": PermissionType.ADMIN},
+        data={
+            "permission_type": choice_value(PermissionType.ADMIN),
+            "start_date": future_start,
+        },
         partial=True,
     )
 
-    assert serializer.is_valid()
+    assert serializer.is_valid(), serializer.errors
     permission = serializer.save()
 
-    assert permission.permission_type == PermissionType.ADMIN
+    assert permission.permission_type == choice_value(PermissionType.ADMIN)
