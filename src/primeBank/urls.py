@@ -25,6 +25,7 @@ urlpatterns = [
     ),
     # API
     path("api/auth/", include("jwt_auth.urls")),
+    path("api/auth/", include("reset_password.urls")),
     path("api/", include("users.urls")),
     path("api/", include("comments.urls")),
     path("api/", include("departments.urls")),
