@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 import pytest
 from django.utils import timezone
 
@@ -21,10 +23,12 @@ def test_permission_serializer(permission):
 
 @pytest.mark.django_db
 def test_permission_create_serializer_valid(admin_user, normal_user):
+    future_date = timezone.now().date() + timedelta(days=1)
+
     serializer = PermissionCreateSerializer(
         data={
             "permission_type": PermissionType.WRITE,
-            "start_date": timezone.now().date(),
+            "start_date": future_date,
             "granted_to_user": normal_user.id,
         },
         context={"request": type("obj", (), {"user": admin_user})()},
@@ -59,7 +63,7 @@ def test_permission_update_serializer(permission):
         partial=True,
     )
 
-    assert serializer.is_valid()
+    assert serializer.is_valid(), serializer.errors
     permission = serializer.save()
 
     assert permission.permission_type == PermissionType.ADMIN
