@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "notifications",
     "permissions",
     "departments",
+    "reset_password",
     "clocks",
     "teams",
 ]
