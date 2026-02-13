@@ -13,7 +13,8 @@ def test_team_creation(team, normal_user, department):
 
 @pytest.mark.django_db
 def test_team_str_method(team):
-    expected = f"{team.name}: {team.description[:50]}"
+    desc = team.description or ""
+    expected = f"{team.name}: {desc[:50]}"
     assert str(team) == expected
 
 
@@ -28,6 +29,7 @@ def test_team_owner_can_be_null():
     team = Teams.objects.create(
         name="No Owner Team",
         description="Team without owner",
+        owner=None,
     )
     assert team.owner is None
 
@@ -37,5 +39,6 @@ def test_team_department_can_be_null():
     team = Teams.objects.create(
         name="No Department Team",
         description="Team without department",
+        department=None,
     )
     assert team.department is None

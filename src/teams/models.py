@@ -3,8 +3,8 @@ from django.db import models
 
 
 class Teams(models.Model):
-    name = models.CharField(max_length=150)
-    description = models.TextField()
+    name = models.CharField(max_length=150, db_index=True)
+    description = models.TextField(db_index=True)
 
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -41,3 +41,8 @@ class Teams(models.Model):
         db_table = "teams"
         verbose_name = "Team"
         verbose_name_plural = "Teams"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["name", "created_at"]),
+            models.Index(fields=["-created_at"]),
+        ]
