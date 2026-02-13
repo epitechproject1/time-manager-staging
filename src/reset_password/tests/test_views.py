@@ -104,4 +104,4 @@ def test_password_reset_confirm_invalid_code(api_client, normal_user):
         },
     )
 
-    assert response.status_code == status.HT_
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
