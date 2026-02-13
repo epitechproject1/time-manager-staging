@@ -1,4 +1,6 @@
 from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework.filters import OrderingFilter, SearchFilter
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.viewsets import ModelViewSet
 
 from .models import Department
@@ -33,5 +35,18 @@ from .serializers import DepartmentSerializer
     ),
 )
 class DepartmentViewSet(ModelViewSet):
-    queryset = Department.objects.all()
+    permission_classes = [IsAuthenticated]
     serializer_class = DepartmentSerializer
+
+    queryset = Department.objects.select_related("director").all()
+
+    filter_backends = [SearchFilter, OrderingFilter]
+    search_fields = [
+        "name",
+        "description",
+        "director__first_name",
+        "director__last_name",
+        "director__email",
+    ]
+    ordering_fields = ["created_at", "updated_at", "name", "is_active"]
+    ordering = ["-created_at"]

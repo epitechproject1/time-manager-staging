@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
+
 WORKDIR /app
 
 # Installer dépendances Python
@@ -17,6 +18,9 @@ RUN pip install --upgrade pip && pip install -r /app/requirements.txt
 
 # Copier le code
 COPY . /app
+
+RUN sed -i 's/\r$//' /app/docker/entrypoint.sh \
+ && chmod +x /app/docker/entrypoint.sh
 
 # Ton projet Django est dans src/
 WORKDIR /app/src
