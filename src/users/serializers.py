@@ -44,6 +44,8 @@ class UserCreateSerializer(serializers.ModelSerializer):
     Serializer de création utilisateur.
     """
 
+    password = serializers.CharField(write_only=True)
+
     role = serializers.ChoiceField(choices=UserRole.choices)
 
     class Meta:
@@ -54,6 +56,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
             "email",
             "phone_number",
             "role",
+            "password",
         ]
 
     def validate_email(self, value: str) -> str:
@@ -62,6 +65,15 @@ class UserCreateSerializer(serializers.ModelSerializer):
                 "Un utilisateur avec cet email existe déjà."
             )
         return value
+
+    def create(self, validated_data):
+        password = validated_data.pop("password")
+
+        user = User(**validated_data)
+        user.set_password(password)
+        user.save()
+
+        return user
 
 
 class UserUpdateSerializer(serializers.ModelSerializer):

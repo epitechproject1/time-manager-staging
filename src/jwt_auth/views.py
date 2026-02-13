@@ -1,4 +1,4 @@
-from django.contrib.auth.hashers import check_password
+from django.contrib.auth import authenticate
 from django.contrib.auth.models import update_last_login
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
@@ -8,19 +8,12 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from users.models import User
-
 from .serializers import LoginSerializer, LogoutSerializer
 
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
-    @extend_schema(
-        tags=["Authentication"],
-        summary="Connexion utilisateur",
-        description="Authentifie un utilisateur via email/mot de passe",
-    )
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -28,28 +21,20 @@ class LoginView(APIView):
         email = serializer.validated_data["email"]
         password = serializer.validated_data["password"]
 
-        try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist:
+        user = authenticate(request, email=email, password=password)
+
+        if user is None:
             return Response(
                 {"detail": "Identifiants invalides"},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
-        if not check_password(password, user.password):
-            return Response(
-                {"detail": "Identifiants invalides"},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
-
-        # 🔒 Gestion compte désactivé
         if not user.is_active:
             return Response(
                 {"detail": "Ce compte est désactivé."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        # ✅ Mise à jour last_login
         update_last_login(None, user)
 
         refresh = RefreshToken.for_user(user)
