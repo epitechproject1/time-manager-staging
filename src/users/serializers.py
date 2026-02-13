@@ -86,6 +86,8 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         required=False,
     )
 
+    is_active = serializers.BooleanField(required=False)
+
     class Meta:
         model = User
         fields = [
@@ -93,6 +95,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
             "last_name",
             "phone_number",
             "role",
+            "is_active",
         ]
 
     def validate_role(self, value):
@@ -104,6 +107,19 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         if request and request.user.role != UserRole.ADMIN:
             raise serializers.ValidationError(
                 "Vous n'êtes pas autorisé à modifier le rôle."
+            )
+
+        return value
+
+    def validate_is_active(self, value):
+        """
+        Empêche un utilisateur non-admin de modifier l'état du compte.
+        """
+        request = self.context.get("request")
+
+        if request and request.user.role != UserRole.ADMIN:
+            raise serializers.ValidationError(
+                "Seul un administrateur peut modifier l'état du compte."
             )
 
         return value

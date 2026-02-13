@@ -56,4 +56,4 @@ def send_reset_password_code(user, code):
     )
 
     email.attach_alternative(html_content, "text/html")
-    email.send()
+    email.send(fail_silently=False)
