@@ -23,6 +23,8 @@ class UserSerializer(serializers.ModelSerializer):
             "email",
             "phone_number",
             "role",
+            "is_active",
+            "last_login",
             "created_at",
             "updated_at",
         ]
@@ -30,6 +32,8 @@ class UserSerializer(serializers.ModelSerializer):
             "id",
             "email",
             "role",
+            "is_active",
+            "last_login",
             "created_at",
             "updated_at",
         ]
@@ -65,6 +69,11 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     Serializer de mise à jour utilisateur.
     """
 
+    role = serializers.ChoiceField(
+        choices=UserRole.choices,
+        required=False,
+    )
+
     class Meta:
         model = User
         fields = [
@@ -73,3 +82,16 @@ class UserUpdateSerializer(serializers.ModelSerializer):
             "phone_number",
             "role",
         ]
+
+    def validate_role(self, value):
+        """
+        Empêche un utilisateur non-admin de modifier son rôle.
+        """
+        request = self.context.get("request")
+
+        if request and request.user.role != UserRole.ADMIN:
+            raise serializers.ValidationError(
+                "Vous n'êtes pas autorisé à modifier le rôle."
+            )
+
+        return value

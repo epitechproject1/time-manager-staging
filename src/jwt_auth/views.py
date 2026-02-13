@@ -1,4 +1,5 @@
 from django.contrib.auth.hashers import check_password
+from django.contrib.auth.models import update_last_login
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -40,6 +41,16 @@ class LoginView(APIView):
                 {"detail": "Identifiants invalides"},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
+
+        # 🔒 Gestion compte désactivé
+        if not user.is_active:
+            return Response(
+                {"detail": "Ce compte est désactivé."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # ✅ Mise à jour last_login
+        update_last_login(None, user)
 
         refresh = RefreshToken.for_user(user)
 
