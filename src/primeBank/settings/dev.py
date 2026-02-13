@@ -61,10 +61,3 @@ SPECTACULAR_SETTINGS = {
     # Pour que le bouton "Authorize" apparaisse dans Swagger
     "COMPONENT_SPLIT_REQUEST": True,
 }
-
-# =============================================================================
-# EMAILS (Console)
-# =============================================================================
-
-# Affiche les emails dans la console au lieu de les envoyer réellement
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"

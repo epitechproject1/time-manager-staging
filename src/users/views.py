@@ -4,6 +4,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
+from notifications.services import send_welcome_email
+from notifications.utils import run_async
+
 from .constants import UserRole
 from .models import User
 from .permissions import IsAdminOrOwnerProfile
@@ -21,27 +24,14 @@ from .serializers import UserCreateSerializer, UserSerializer, UserUpdateSeriali
     destroy=extend_schema(tags=["Users"], summary="Supprimer un utilisateur"),
 )
 class UserViewSet(ModelViewSet):
-    """
-    API CRUD des utilisateurs.
-
-    Permissions :
-    - ADMIN : accès total
-    - USER :
-        - peut voir / modifier / supprimer son propre profil uniquement
-        - ne peut pas voir la liste
-        - ne peut pas créer
-    """
-
     permission_classes = [IsAdminOrOwnerProfile]
 
     def get_queryset(self):
         user = self.request.user
 
-        # Admin -> tous les utilisateurs
         if user.role == UserRole.ADMIN:
             return User.objects.all().order_by("-created_at")
 
-        # User -> uniquement lui-même
         return User.objects.filter(id=user.id)
 
     def get_serializer_class(self):
@@ -53,6 +43,18 @@ class UserViewSet(ModelViewSet):
 
         return UserSerializer
 
+    def perform_create(self, serializer):
+        """
+        Création utilisateur + envoi email async
+        """
+        user = serializer.save()
+
+        # ⚠️ IMPORTANT : récupérer le mot de passe envoyé dans la request
+        raw_password = self.request.data.get("password")
+
+        if raw_password:
+            run_async(send_welcome_email, user, raw_password)
+
     @extend_schema(summary="Récupérer le profil de l'utilisateur connecté")
     @action(
         detail=False,
@@ -61,9 +63,5 @@ class UserViewSet(ModelViewSet):
         permission_classes=[IsAuthenticated],
     )
     def me(self, request):
-        """
-        Retourne les informations de l'utilisateur actuellement connecté.
-        Endpoint: /api/users/me/
-        """
         serializer = self.get_serializer(request.user)
         return Response(serializer.data)

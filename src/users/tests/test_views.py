@@ -5,6 +5,8 @@ from rest_framework import status
 from users.constants import UserRole
 from users.models import User
 
+DEFAULT_PASSWORD = "StrongPass123!"
+
 # =========================
 # LIST
 # =========================
@@ -49,7 +51,9 @@ def test_create_user_admin(api_client, admin_user):
             "email": "created@test.com",
             "first_name": "Created",
             "last_name": "User",
+            "phone_number": "0600000000",
             "role": UserRole.USER,
+            "password": DEFAULT_PASSWORD,
         },
     )
 
@@ -67,7 +71,9 @@ def test_create_user_forbidden_for_non_admin(api_client, normal_user):
             "email": "forbidden@test.com",
             "first_name": "No",
             "last_name": "Access",
+            "phone_number": "0600000000",
             "role": UserRole.USER,
+            "password": DEFAULT_PASSWORD,
         },
     )
 
