@@ -14,6 +14,7 @@ from .models import Teams
 from .serializers import TeamsSerializer
 
 logger = logging.getLogger(__name__)
+TEAMS_CACHE_PATTERN = "teams:*"
 
 
 def safe_cache_delete_pattern(pattern: str) -> None:
@@ -146,7 +147,7 @@ class TeamsViewSet(ModelViewSet):
         )
 
     def perform_create(self, serializer):
-        safe_cache_delete_pattern("teams:*")
+        safe_cache_delete_pattern(TEAMS_CACHE_PATTERN)
 
         owner = serializer.validated_data.get("owner", None)
         if owner is None:
@@ -155,11 +156,11 @@ class TeamsViewSet(ModelViewSet):
             serializer.save()
 
     def perform_update(self, serializer):
-        safe_cache_delete_pattern("teams:*")
+        safe_cache_delete_pattern(TEAMS_CACHE_PATTERN)
         serializer.save()
 
     def perform_destroy(self, instance):
-        safe_cache_delete_pattern("teams:*")
+        safe_cache_delete_pattern(TEAMS_CACHE_PATTERN)
         instance.delete()
 
     @extend_schema(
