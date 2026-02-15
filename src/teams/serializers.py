@@ -1,6 +1,6 @@
 from django.contrib.auth import get_user_model
-from jsonschema.exceptions import ValidationError
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 
 from departments.models import Department
 
@@ -28,7 +28,7 @@ class TeamsSerializer(serializers.ModelSerializer):
     owner_id = serializers.IntegerField(
         write_only=True, required=False, allow_null=True
     )
-    department_id = serializers.IntegerField(write_only=True, required=True)
+    department_id = serializers.IntegerField(write_only=True, required=False)
 
     members = UserMiniSerializer(many=True, read_only=True)
     members_count = serializers.SerializerMethodField()
@@ -75,9 +75,32 @@ class TeamsSerializer(serializers.ModelSerializer):
             team.members.set(User.objects.filter(id__in=members_ids))
 
         if team.owner_id:
-            team.members.add(team.owner_id)
+            team.members.add(team.owner)
 
         return team
+
+    def update(self, instance, validated_data):
+        owner_id = validated_data.pop("owner_id", None)
+        department_id = validated_data.pop("department_id", None)
+        members_ids = validated_data.pop("members_ids", None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        if owner_id is not None:
+            instance.owner_id = owner_id
+
+        if department_id is not None:
+            instance.department_id = department_id
+
+        instance.save()
+
+        if members_ids is not None:
+            instance.members.set(User.objects.filter(id__in=members_ids))
+
+            if instance.owner_id:
+                instance.members.add(instance.owner_id)
+
+        return instance
 
     def validate(self, attrs):
         """
