@@ -48,7 +48,7 @@ INSTALLED_APPS = [
     "primeBank",
     "jwt_auth",
     "users",
-    "plannings",
+    "contracts",
     "comments",
     "notifications",
     "permissions",
@@ -56,6 +56,8 @@ INSTALLED_APPS = [
     "reset_password",
     "clocks",
     "teams",
+    "planning_patterns",
+    "scheduling",
 ]
 
 # =============================================================================
