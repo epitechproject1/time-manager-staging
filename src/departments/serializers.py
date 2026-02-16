@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 
 from .models import Department
 
@@ -14,9 +15,16 @@ class UserMiniSerializer(serializers.ModelSerializer):
 
 class DepartmentSerializer(serializers.ModelSerializer):
     director = UserMiniSerializer(read_only=True)
-    director_id = serializers.IntegerField(
-        write_only=True, required=False, allow_null=True
+    director_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(),
+        source="director",
+        write_only=True,
+        required=False,
+        allow_null=True,
     )
+
+    teams_count = serializers.IntegerField(read_only=True)
+    employees_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Department
@@ -27,23 +35,15 @@ class DepartmentSerializer(serializers.ModelSerializer):
             "director",
             "director_id",
             "is_active",
+            "teams_count",
+            "employees_count",
             "created_at",
             "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
-    def create(self, validated_data):
-        director_id = validated_data.pop("director_id", None)
-        return Department.objects.create(director_id=director_id, **validated_data)
-
-    def update(self, instance, validated_data):
-        director_id = validated_data.pop("director_id", None)
-
-        if director_id is not None:
-            instance.director_id = director_id
-
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-
-        instance.save()
-        return instance
+    def validate_name(self, value):
+        value = value.strip()
+        if not value:
+            raise ValidationError("Le nom du département est obligatoire.")
+        return value
