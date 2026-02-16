@@ -18,6 +18,78 @@ from .models import User
 from .permissions import IsAdminOrOwnerProfile
 from .serializers import UserCreateSerializer, UserSerializer, UserUpdateSerializer
 
+EXPORT_COLUMNS = (
+    "id",
+    "first_name",
+    "last_name",
+    "email",
+    "phone_number",
+    "role",
+    "is_active",
+    "last_login",
+    "created_at",
+    "updated_at",
+)
+
+
+def _user_filter_parameters(include_file_format=False):
+    params = [
+        OpenApiParameter(
+            name="q",
+            description="Recherche (nom, prenom, email, telephone, role)",
+            required=False,
+            type=str,
+        ),
+        OpenApiParameter(
+            name="role",
+            description="Filtrer par role (ADMIN, MANAGER, USER)",
+            required=False,
+            type=str,
+        ),
+        OpenApiParameter(
+            name="email",
+            description="Filtrer par email (contient)",
+            required=False,
+            type=str,
+        ),
+        OpenApiParameter(
+            name="is_active",
+            description="Filtrer par statut actif (true/false)",
+            required=False,
+            type=bool,
+        ),
+        OpenApiParameter(
+            name="created_from",
+            description="Date de creation min (YYYY-MM-DD)",
+            required=False,
+            type=str,
+        ),
+        OpenApiParameter(
+            name="created_to",
+            description="Date de creation max (YYYY-MM-DD)",
+            required=False,
+            type=str,
+        ),
+        OpenApiParameter(
+            name="ordering",
+            description="Tri (ex: -created_at, email, role)",
+            required=False,
+            type=str,
+        ),
+    ]
+
+    if include_file_format:
+        params.append(
+            OpenApiParameter(
+                name="file_format",
+                description="Format de sortie (csv|pdf). Par defaut: csv",
+                required=False,
+                type=str,
+            )
+        )
+
+    return params
+
 
 @extend_schema_view(
     list=extend_schema(tags=["Users"], summary="Lister les utilisateurs"),
@@ -144,50 +216,7 @@ class UserViewSet(ModelViewSet):
     @extend_schema(
         tags=["Users"],
         summary="Rechercher des utilisateurs",
-        parameters=[
-            OpenApiParameter(
-                name="q",
-                description="Recherche (nom, prenom, email, telephone, role)",
-                required=False,
-                type=str,
-            ),
-            OpenApiParameter(
-                name="role",
-                description="Filtrer par role (ADMIN, MANAGER, USER)",
-                required=False,
-                type=str,
-            ),
-            OpenApiParameter(
-                name="email",
-                description="Filtrer par email (contient)",
-                required=False,
-                type=str,
-            ),
-            OpenApiParameter(
-                name="is_active",
-                description="Filtrer par statut actif (true/false)",
-                required=False,
-                type=bool,
-            ),
-            OpenApiParameter(
-                name="created_from",
-                description="Date de creation min (YYYY-MM-DD)",
-                required=False,
-                type=str,
-            ),
-            OpenApiParameter(
-                name="created_to",
-                description="Date de creation max (YYYY-MM-DD)",
-                required=False,
-                type=str,
-            ),
-            OpenApiParameter(
-                name="ordering",
-                description="Tri (ex: -created_at, email, role)",
-                required=False,
-                type=str,
-            ),
-        ],
+        parameters=_user_filter_parameters(),
     )
     @action(detail=False, methods=["get"], url_path="search")
     def search(self, request):
@@ -206,56 +235,7 @@ class UserViewSet(ModelViewSet):
     @extend_schema(
         tags=["Users"],
         summary="Exporter des utilisateurs (CSV ou PDF)",
-        parameters=[
-            OpenApiParameter(
-                name="q",
-                description="Filtrer l'export par recherche",
-                required=False,
-                type=str,
-            ),
-            OpenApiParameter(
-                name="role",
-                description="Filtrer par role (ADMIN, MANAGER, USER)",
-                required=False,
-                type=str,
-            ),
-            OpenApiParameter(
-                name="email",
-                description="Filtrer par email (contient)",
-                required=False,
-                type=str,
-            ),
-            OpenApiParameter(
-                name="is_active",
-                description="Filtrer par statut actif (true/false)",
-                required=False,
-                type=bool,
-            ),
-            OpenApiParameter(
-                name="created_from",
-                description="Date de creation min (YYYY-MM-DD)",
-                required=False,
-                type=str,
-            ),
-            OpenApiParameter(
-                name="created_to",
-                description="Date de creation max (YYYY-MM-DD)",
-                required=False,
-                type=str,
-            ),
-            OpenApiParameter(
-                name="ordering",
-                description="Tri (ex: -created_at, email, role)",
-                required=False,
-                type=str,
-            ),
-            OpenApiParameter(
-                name="file_format",
-                description="Format de sortie (csv|pdf). Par defaut: csv",
-                required=False,
-                type=str,
-            ),
-        ],
+        parameters=_user_filter_parameters(include_file_format=True),
     )
     @action(detail=False, methods=["get"], url_path="export")
     def export(self, request):
@@ -280,38 +260,27 @@ class UserViewSet(ModelViewSet):
         response["Content-Disposition"] = "attachment; filename=users.csv"
 
         writer = csv.writer(response)
-        writer.writerow(
-            [
-                "id",
-                "first_name",
-                "last_name",
-                "email",
-                "phone_number",
-                "role",
-                "is_active",
-                "last_login",
-                "created_at",
-                "updated_at",
-            ]
-        )
+        writer.writerow(EXPORT_COLUMNS)
 
         for user in queryset:
-            writer.writerow(
-                [
-                    user.id,
-                    user.first_name,
-                    user.last_name,
-                    user.email,
-                    user.phone_number,
-                    user.role,
-                    user.is_active,
-                    user.last_login,
-                    user.created_at,
-                    user.updated_at,
-                ]
-            )
+            writer.writerow(self._user_export_values(user))
 
         return response
+
+    @staticmethod
+    def _user_export_values(user):
+        return [
+            user.id,
+            user.first_name,
+            user.last_name,
+            user.email,
+            user.phone_number,
+            user.role,
+            user.is_active,
+            user.last_login,
+            user.created_at,
+            user.updated_at,
+        ]
 
     def _export_pdf(self, queryset):
         try:
@@ -337,16 +306,12 @@ class UserViewSet(ModelViewSet):
 
         for user in queryset:
             lines = [
-                f"id: {user.id}",
-                f"first_name: {user.first_name}",
-                f"last_name: {user.last_name}",
-                f"email: {user.email}",
-                f"phone_number: {user.phone_number or ''}",
-                f"role: {user.role}",
-                f"is_active: {user.is_active}",
-                f"last_login: {user.last_login or ''}",
-                f"created_at: {user.created_at}",
-                f"updated_at: {user.updated_at}",
+                f"{column}: {'' if value is None else value}"
+                for column, value in zip(
+                    EXPORT_COLUMNS,
+                    self._user_export_values(user),
+                    strict=False,
+                )
             ]
 
             needed_height = 14 * (len(lines) + 1)
