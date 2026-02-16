@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 
 from departments.models import Department
 
@@ -27,7 +28,7 @@ class TeamsSerializer(serializers.ModelSerializer):
     owner_id = serializers.IntegerField(
         write_only=True, required=False, allow_null=True
     )
-    department_id = serializers.IntegerField(write_only=True, required=True)
+    department_id = serializers.IntegerField(write_only=True, required=False)
 
     members = UserMiniSerializer(many=True, read_only=True)
     members_count = serializers.SerializerMethodField()
@@ -74,7 +75,7 @@ class TeamsSerializer(serializers.ModelSerializer):
             team.members.set(User.objects.filter(id__in=members_ids))
 
         if team.owner_id:
-            team.members.add(team.owner_id)
+            team.members.add(team.owner)
 
         return team
 
@@ -82,18 +83,42 @@ class TeamsSerializer(serializers.ModelSerializer):
         owner_id = validated_data.pop("owner_id", None)
         department_id = validated_data.pop("department_id", None)
         members_ids = validated_data.pop("members_ids", None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
 
         if owner_id is not None:
             instance.owner_id = owner_id
+
         if department_id is not None:
             instance.department_id = department_id
-
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
 
         instance.save()
 
         if members_ids is not None:
             instance.members.set(User.objects.filter(id__in=members_ids))
 
+            if instance.owner_id:
+                instance.members.add(instance.owner_id)
+
         return instance
+
+    def validate(self, attrs):
+        """
+        Règle: le responsable (owner) doit toujours faire partie des membres.
+        - Si members_ids est envoyé et ne contient pas l'owner -> erreur
+        - Si on change owner_id, il doit être inclus aussi
+        """
+        instance = getattr(self, "instance", None)
+
+        current_owner_id = instance.owner_id if instance else None
+        new_owner_id = attrs.get("owner_id", current_owner_id)
+
+        members_ids = attrs.get("members_ids", None)
+
+        if members_ids is not None and new_owner_id is not None:
+            if new_owner_id not in members_ids:
+                raise ValidationError(
+                    {"Impossible de retirer le responsable de l'équipe des membres."}
+                )
+
+        return attrs
