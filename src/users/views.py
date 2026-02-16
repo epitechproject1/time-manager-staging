@@ -250,14 +250,8 @@ class UserViewSet(ModelViewSet):
                 type=str,
             ),
             OpenApiParameter(
-                name="format",
-                description="Format de sortie (csv|pdf). Par defaut: csv",
-                required=False,
-                type=str,
-            ),
-            OpenApiParameter(
                 name="file_format",
-                description="Alias de format (csv|pdf), prioritaire sur format",
+                description="Format de sortie (csv|pdf). Par defaut: csv",
                 required=False,
                 type=str,
             ),
@@ -268,11 +262,7 @@ class UserViewSet(ModelViewSet):
         queryset = self.get_queryset()
         queryset, _ = self._apply_filters(queryset)
 
-        output_format = (
-            request.query_params.get("file_format")
-            or request.query_params.get("format")
-            or "csv"
-        )
+        output_format = request.query_params.get("file_format") or "csv"
         output_format = str(output_format).strip().lower()
 
         if output_format == "pdf":

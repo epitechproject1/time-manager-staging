@@ -197,7 +197,7 @@ def test_user_search_with_filters(api_client, admin_user, normal_user):
 def test_user_export_pdf(api_client, admin_user):
     api_client.force_authenticate(user=admin_user)
 
-    response = api_client.get(reverse("user-export"), data={"format": "pdf"})
+    response = api_client.get(reverse("user-export"), data={"file_format": "pdf"})
 
     assert response.status_code == status.HTTP_200_OK
     assert response["Content-Type"] == "application/pdf"
