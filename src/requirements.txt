@@ -60,3 +60,4 @@ types-PyYAML==6.0.12.20250915
 typing_extensions==4.15.0
 uritemplate==4.2.0
 virtualenv==20.36.1
+reportlab==4.4.1

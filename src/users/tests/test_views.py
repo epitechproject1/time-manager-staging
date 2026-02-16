@@ -7,6 +7,7 @@ from users.models import User
 
 DEFAULT_PASSWORD = "StrongPass123!"
 
+
 # =========================
 # LIST
 # =========================
@@ -156,3 +157,48 @@ def test_admin_can_delete_user(api_client, admin_user, normal_user):
     response = api_client.delete(reverse("user-detail", args=[normal_user.id]))
 
     assert response.status_code == status.HTTP_204_NO_CONTENT
+
+
+# =========================
+# SEARCH / EXPORT
+# =========================
+
+
+@pytest.mark.django_db
+def test_user_search_with_filters(api_client, admin_user, normal_user):
+    api_client.force_authenticate(user=admin_user)
+
+    User.objects.create_user(
+        email="manager@test.com",
+        password=DEFAULT_PASSWORD,
+        first_name="Manage",
+        last_name="R",
+        phone_number="0700000000",
+        role=UserRole.MANAGER,
+        is_active=False,
+    )
+
+    response = api_client.get(
+        reverse("user-search"),
+        data={
+            "q": "man",
+            "role": UserRole.MANAGER,
+            "is_active": "false",
+            "ordering": "email",
+        },
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["total"] == 1
+    assert response.data["data"][0]["email"] == "manager@test.com"
+
+
+@pytest.mark.django_db
+def test_user_export_pdf(api_client, admin_user):
+    api_client.force_authenticate(user=admin_user)
+
+    response = api_client.get(reverse("user-export"), data={"file_format": "pdf"})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response["Content-Type"] == "application/pdf"
+    assert "users.pdf" in response["Content-Disposition"]
