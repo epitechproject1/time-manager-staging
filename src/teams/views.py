@@ -2,16 +2,18 @@ import logging
 from datetime import datetime
 
 from django.core.cache import cache
-from django.db.models import Count, Q
+from django.db.models import CharField, Count, Q, Value
+from django.db.models.functions import Concat, Lower
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.filters import OrderingFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
 from .models import Teams
-from .serializers import TeamsSerializer
+from .serializers import TeamsSerializer, UserMiniSerializer
 
 logger = logging.getLogger(__name__)
 TEAMS_CACHE_PATTERN = "teams:*"
@@ -35,7 +37,7 @@ def safe_cache_delete_pattern(pattern: str) -> None:
     list=extend_schema(
         tags=["Teams"],
         summary="Lister les équipes",
-        description="Récupère la liste des équipes avec possibilité de recherche",
+        description="Récupère la liste des équipes avec recherche, filtres et tri",
         parameters=[
             OpenApiParameter(
                 name="q",
@@ -61,6 +63,15 @@ def safe_cache_delete_pattern(pattern: str) -> None:
                 required=False,
                 type=bool,
             ),
+            OpenApiParameter(
+                name="ordering",
+                description=(
+                    "Tri: name, -name, created_at, -created_at, "
+                    "updated_at, -updated_at, members_count, -members_count"
+                ),
+                required=False,
+                type=str,
+            ),
         ],
     ),
     retrieve=extend_schema(
@@ -68,30 +79,20 @@ def safe_cache_delete_pattern(pattern: str) -> None:
         summary="Détail d'une équipe",
         description="Récupère les détails complets d'une équipe spécifique",
     ),
-    create=extend_schema(
-        tags=["Teams"],
-        summary="Créer une équipe",
-        description="Crée une nouvelle équipe.",
-    ),
-    update=extend_schema(
-        tags=["Teams"],
-        summary="Mettre à jour une équipe",
-        description="Met à jour complètement une équipe existante",
-    ),
+    create=extend_schema(tags=["Teams"], summary="Créer une équipe"),
+    update=extend_schema(tags=["Teams"], summary="Mettre à jour une équipe"),
     partial_update=extend_schema(
-        tags=["Teams"],
-        summary="Mettre à jour partiellement une équipe",
-        description="Met à jour partiellement les champs d'une équipe",
+        tags=["Teams"], summary="Mettre à jour partiellement une équipe"
     ),
-    destroy=extend_schema(
-        tags=["Teams"],
-        summary="Supprimer une équipe",
-        description="Supprime définitivement une équipe",
-    ),
+    destroy=extend_schema(tags=["Teams"], summary="Supprimer une équipe"),
 )
 class TeamsViewSet(ModelViewSet):
     serializer_class = TeamsSerializer
     permission_classes = [IsAuthenticated]
+
+    filter_backends = [OrderingFilter]
+    ordering_fields = ["name", "created_at", "updated_at", "members_count"]
+    ordering = ["-created_at"]
 
     def get_queryset(self):
         qs = (
@@ -99,11 +100,10 @@ class TeamsViewSet(ModelViewSet):
             .select_related("owner", "department")
             .prefetch_related("members")
             .annotate(members_count=Count("members", distinct=True))
-            .order_by("-created_at")
         )
 
         search_term = (self.request.query_params.get("q") or "").strip()
-        if search_term:
+        if search_term and self.action in ("list", "search", "my_teams"):
             qs = qs.filter(
                 Q(name__icontains=search_term)
                 | Q(description__icontains=search_term)
@@ -129,8 +129,20 @@ class TeamsViewSet(ModelViewSet):
 
         return qs
 
+    # ✅ IMPORTANT: tri name insensible à la casse
+    def filter_queryset(self, queryset):
+        qs = super().filter_queryset(queryset)
+
+        ordering = (self.request.query_params.get("ordering") or "").strip()
+        if ordering in ("name", "-name"):
+            desc = ordering.startswith("-")
+            qs = qs.annotate(_name_ci=Lower("name")).order_by(
+                ("-" if desc else "") + "_name_ci",
+                "id",
+            )
+        return qs
+
     def list(self, request, *args, **kwargs):
-        """Override pour ajouter des métadonnées dans la réponse"""
         queryset = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(queryset)
         if page is not None:
@@ -148,7 +160,6 @@ class TeamsViewSet(ModelViewSet):
 
     def perform_create(self, serializer):
         safe_cache_delete_pattern(TEAMS_CACHE_PATTERN)
-
         owner = serializer.validated_data.get("owner", None)
         if owner is None:
             serializer.save(owner=self.request.user)
@@ -165,44 +176,115 @@ class TeamsViewSet(ModelViewSet):
 
     @extend_schema(
         tags=["Teams"],
-        summary="Mes équipes",
-        description="Récupère équipes dont le prop est l'utilisateur connecté",
-    )
-    @action(detail=False, methods=["get"], url_path="my-teams")
-    def my_teams(self, request):
-        teams = self.get_queryset().filter(owner=request.user)
-        serializer = self.get_serializer(teams, many=True)
-        return Response({"data": serializer.data, "total": teams.count()})
-
-    @extend_schema(
-        tags=["Teams"],
-        summary="Rechercher des équipes",
-        description="Recherche avancée d'équipes avec cache",
+        summary="Lister/Rechercher les membres d'une équipe",
+        description=(
+            "Retourne les membres d'une équipe avec recherche + pagination + tri"
+        ),
         parameters=[
             OpenApiParameter(
-                name="q", description="Terme de recherche", required=True, type=str
+                name="q",
+                description="Recherche (nom/prénom/email)",
+                required=False,
+                type=str,
             ),
             OpenApiParameter(
                 name="page", description="Numéro de page", required=False, type=int
             ),
             OpenApiParameter(
-                name="limit",
-                description="Nombre de résultats par page (max 100)",
+                name="page_size", description="Taille de page", required=False, type=int
+            ),
+            OpenApiParameter(
+                name="ordering",
+                description=(
+                    "Tri membres: first_name, -first_name, "
+                    "last_name, -last_name, email, -email"
+                ),
                 required=False,
-                type=int,
+                type=str,
             ),
         ],
     )
+    @action(detail=True, methods=["get"], url_path="members")
+    def members(self, request, pk=None):
+        team = self.get_object()
+
+        q = (request.query_params.get("q") or "").strip()
+        ordering = (request.query_params.get("ordering") or "").strip()
+
+        try:
+            page = max(int(request.query_params.get("page", 1)), 1)
+        except (ValueError, TypeError):
+            page = 1
+
+        try:
+            page_size = int(request.query_params.get("page_size", 6))
+        except (ValueError, TypeError):
+            page_size = 6
+        page_size = min(max(page_size, 1), 100)
+
+        qs = team.members.all().annotate(
+            full_name=Concat(
+                "first_name", Value(" "), "last_name", output_field=CharField()
+            ),
+            full_name_reversed=Concat(
+                "last_name", Value(" "), "first_name", output_field=CharField()
+            ),
+        )
+
+        if q:
+            qs = qs.filter(
+                Q(first_name__icontains=q)
+                | Q(last_name__icontains=q)
+                | Q(email__icontains=q)
+                | Q(full_name__icontains=q)
+                | Q(full_name_reversed__icontains=q)
+            )
+
+        allowed = {
+            "first_name",
+            "-first_name",
+            "last_name",
+            "-last_name",
+            "email",
+            "-email",
+        }
+        if ordering in allowed:
+            qs = qs.order_by(ordering, "id")
+        else:
+            qs = qs.order_by("first_name", "last_name", "id")
+
+        total = qs.count()
+        start = (page - 1) * page_size
+        end = start + page_size
+
+        serializer = UserMiniSerializer(qs[start:end], many=True)
+
+        return Response(
+            {
+                "count": total,
+                "next": page * page_size < total,
+                "previous": page > 1,
+                "results": serializer.data,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": (total + page_size - 1) // page_size if total else 0,
+            }
+        )
+
+    @action(detail=False, methods=["get"], url_path="my-teams")
+    def my_teams(self, request):
+        queryset = self.filter_queryset(self.get_queryset().filter(owner=request.user))
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({"data": serializer.data, "total": queryset.count()})
+
     @action(detail=False, methods=["get"], url_path="search")
     def search(self, request):
-        """Endpoint de recherche dédié avec cache"""
         search_term = (request.query_params.get("q") or "").strip()
 
         try:
-            page = int(request.query_params.get("page", 1))
+            page = max(int(request.query_params.get("page", 1)), 1)
         except ValueError:
             page = 1
-        page = max(page, 1)
 
         try:
             limit = int(request.query_params.get("limit", 10))
@@ -213,21 +295,11 @@ class TeamsViewSet(ModelViewSet):
         cache_key = f"teams:search:{search_term}:{page}:{limit}:{request.user.id}"
         cached_result = cache.get(cache_key)
         if cached_result:
-            logger.info("Cache hit pour: %s", cache_key)
             return Response(cached_result)
 
-        queryset = self.get_queryset()
-        if search_term:
-            queryset = queryset.filter(
-                Q(name__icontains=search_term)
-                | Q(description__icontains=search_term)
-                | Q(department__name__icontains=search_term)
-                | Q(owner__first_name__icontains=search_term)
-                | Q(owner__last_name__icontains=search_term)
-                | Q(owner__email__icontains=search_term)
-            ).distinct()
-
+        queryset = self.filter_queryset(self.get_queryset())
         total = queryset.count()
+
         start = (page - 1) * limit
         end = start + limit
         teams = queryset[start:end]
@@ -245,16 +317,10 @@ class TeamsViewSet(ModelViewSet):
         cache.set(cache_key, response_data, 300)
         return Response(response_data)
 
-    @extend_schema(
-        tags=["Teams"],
-        summary="Statistiques des équipes",
-        description="Récupère les statistiques agrégées (total, départements, ce mois)",
-    )
     @action(detail=False, methods=["get"], url_path="stats")
     def stats(self, request):
         try:
             now = datetime.now()
-
             total_teams = Teams.objects.count()
 
             departments_count = (
