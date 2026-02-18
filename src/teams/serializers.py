@@ -58,6 +58,9 @@ class TeamsSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "updated_at", "members_count"]
 
     def get_members_count(self, obj):
+        annotated = getattr(obj, "members_count", None)
+        if annotated is not None:
+            return annotated
         return obj.members.count()
 
     def create(self, validated_data):
@@ -110,7 +113,7 @@ class TeamsSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         """
         Règle: le responsable (owner) doit toujours faire partie des membres.
-        - Si members_ids est envoyé et ne contient pas l'owner -> erreur
+        - Si members_ids est envoyé et ne contient pas l'owner -> erreur 400
         """
         instance = getattr(self, "instance", None)
 
@@ -122,7 +125,12 @@ class TeamsSerializer(serializers.ModelSerializer):
         if members_ids is not None and new_owner_id is not None:
             if new_owner_id not in members_ids:
                 raise ValidationError(
-                    {"Impossible de retirer le responsable de l'équipe des membres."}
+                    {
+                        "members_ids": (
+                            "Impossible de retirer le responsable "
+                            "de l'équipe des membres."
+                        )
+                    }
                 )
 
         return attrs
@@ -130,8 +138,14 @@ class TeamsSerializer(serializers.ModelSerializer):
 
 class TeamsLiteSerializer(serializers.ModelSerializer):
     owner = UserMiniSerializer(read_only=True)
-    members_count = serializers.IntegerField(read_only=True)
+    members_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Teams
         fields = ["id", "name", "description", "owner", "members_count"]
+
+    def get_members_count(self, obj):
+        annotated = getattr(obj, "members_count", None)
+        if annotated is not None:
+            return annotated
+        return obj.members.count()

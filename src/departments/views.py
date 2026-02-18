@@ -152,7 +152,6 @@ class DepartmentViewSet(ModelViewSet):
 
         instance.delete()
 
-    # ✅ ENDPOINT: /api/departments/<id>/teams/
     @extend_schema(
         tags=["Departments"],
         summary="Lister les équipes d’un département",
