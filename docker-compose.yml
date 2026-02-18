@@ -2,10 +2,12 @@ services:
   db:
     image: postgres:16
     container_name: timemanager_db
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-timemanager}
       POSTGRES_USER: ${POSTGRES_USER:-timemanager_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-timemanager_pass}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

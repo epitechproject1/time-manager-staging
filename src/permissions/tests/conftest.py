@@ -1,4 +1,7 @@
+from datetime import timedelta
+
 import pytest
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from permissions.constants import PermissionType
@@ -37,9 +40,11 @@ def normal_user(db):
 
 @pytest.fixture
 def permission(db, admin_user, normal_user):
+    future_date = timezone.now().date() + timedelta(days=1)
+
     return Permission.objects.create(
         permission_type=PermissionType.READ,
-        start_date="2026-02-10",
+        start_date=future_date,
         granted_by_user=admin_user,
         granted_to_user=normal_user,
     )

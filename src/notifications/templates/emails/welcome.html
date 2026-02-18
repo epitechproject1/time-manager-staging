@@ -1,0 +1,32 @@
+{% extends "emails/base.html" %}
+
+{% block title %}
+Bienvenue chez PrimeBank
+{% endblock %}
+
+{% block content %}
+
+<p>Bonjour {{ first_name }} {{ last_name }},</p>
+
+<p>
+    Nous sommes ravis de vous accueillir sur la plateforme <strong>PrimeBank</strong>.
+    Votre compte a été créé avec succès.
+</p>
+
+<p>Voici vos informations de connexion :</p>
+
+<div class="credentials">
+    <p><strong>Email :</strong> {{ email }}</p>
+    <p><strong>Mot de passe :</strong> {{ password }}</p>
+</div>
+
+<p>
+ Pour des raisons de sécurité, nous vous recommandons de réinitialiser votre mot de passe en utilisant la procédure “mot de passe oublié” lors de votre premiere connexion.
+</p>
+
+<p style="margin-top: 24px;">
+    À très bientôt,<br>
+    <strong>L’équipe PrimeBank</strong>
+</p>
+
+{% endblock %}
