@@ -43,7 +43,7 @@ class DepartmentSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "updated_at"]
 
     def validate_name(self, value):
-        value = value.strip()
+        value = (value or "").strip()
         if not value:
             raise ValidationError("Le nom du département est obligatoire.")
         return value
