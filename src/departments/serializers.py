@@ -13,6 +13,25 @@ class UserMiniSerializer(serializers.ModelSerializer):
         fields = ["id", "first_name", "last_name", "email"]
 
 
+class DepartmentLiteSerializer(serializers.ModelSerializer):
+    director = UserMiniSerializer(read_only=True)
+    teams_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Department
+        fields = [
+            "id",
+            "name",
+            "description",
+            "director",
+            "is_active",
+            "teams_count",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
 class DepartmentSerializer(serializers.ModelSerializer):
     director = UserMiniSerializer(read_only=True)
     director_id = serializers.PrimaryKeyRelatedField(
