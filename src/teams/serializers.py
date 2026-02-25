@@ -144,9 +144,7 @@ class TeamsSerializer(serializers.ModelSerializer):
         return instance
 
     def validate(self, attrs):
-        """
-        Règle: owner doit toujours faire partie des membres.
-        """
+
         instance = getattr(self, "instance", None)
 
         current_owner_id = instance.owner_id if instance else None
