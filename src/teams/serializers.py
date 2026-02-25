@@ -21,7 +21,40 @@ class DepartmentMiniSerializer(serializers.ModelSerializer):
         fields = ["id", "name"]
 
 
+class TeamsLiteSerializer(serializers.ModelSerializer):
+    """
+    Annuaire (visible par tous)
+    """
+
+    owner = UserMiniSerializer(read_only=True)
+    department = DepartmentMiniSerializer(read_only=True)
+    members_count = serializers.SerializerMethodField()
+    is_pinned = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Teams
+        fields = [
+            "id",
+            "name",
+            "description",
+            "owner",
+            "department",
+            "members_count",
+            "is_pinned",
+        ]
+
+    def get_members_count(self, obj):
+        annotated = getattr(obj, "members_count", None)
+        if annotated is not None:
+            return annotated
+        return obj.members.count()
+
+
 class TeamsSerializer(serializers.ModelSerializer):
+    """
+    Détails (visible uniquement si scoped via get_serializer_class)
+    """
+
     owner = UserMiniSerializer(read_only=True)
     department = DepartmentMiniSerializer(read_only=True)
 
@@ -112,8 +145,7 @@ class TeamsSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         """
-        Règle: le responsable (owner) doit toujours faire partie des membres.
-        - Si members_ids est envoyé et ne contient pas l'owner -> erreur 400
+        Règle: owner doit toujours faire partie des membres.
         """
         instance = getattr(self, "instance", None)
 
@@ -124,28 +156,7 @@ class TeamsSerializer(serializers.ModelSerializer):
 
         if members_ids is not None and new_owner_id is not None:
             if new_owner_id not in members_ids:
-                raise ValidationError(
-                    {
-                        "members_ids": (
-                            "Impossible de retirer le responsable "
-                            "de l'équipe des membres."
-                        )
-                    }
-                )
+                msg = "Impossible de retirer le responsable de l'équipe des membres."
+                raise ValidationError({"members_ids": msg})
 
         return attrs
-
-
-class TeamsLiteSerializer(serializers.ModelSerializer):
-    owner = UserMiniSerializer(read_only=True)
-    members_count = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Teams
-        fields = ["id", "name", "description", "owner", "members_count"]
-
-    def get_members_count(self, obj):
-        annotated = getattr(obj, "members_count", None)
-        if annotated is not None:
-            return annotated
-        return obj.members.count()

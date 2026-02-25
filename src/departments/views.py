@@ -2,12 +2,12 @@ import logging
 from datetime import datetime
 
 from django.core.cache import cache
-from django.db.models import Case, Count, IntegerField, Q, Sum, When
+from django.db.models import Case, Count, IntegerField, Q, Sum, Value, When
 from django.db.models.functions import Lower
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.filters import OrderingFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -15,9 +15,11 @@ from rest_framework.viewsets import ModelViewSet
 
 from teams.models import Teams
 from teams.serializers import TeamsLiteSerializer
+from users.constants import UserRole
 
 from .models import Department
-from .serializers import DepartmentSerializer
+from .permissions import IsAdminOrReadOnlyDepartmentsDirectory
+from .serializers import DepartmentLiteSerializer, DepartmentSerializer
 
 logger = logging.getLogger(__name__)
 DEPARTMENTS_CACHE_PATTERN = "departments:*"
@@ -86,51 +88,34 @@ def _build_count_annotations():
         description="Récupère la liste des départements avec recherche, filtres et tri",
         parameters=[
             OpenApiParameter(
-                name="q",
-                description="Recherche (nom, description, directeur)",
-                required=False,
-                type=str,
+                name="q", description="Recherche", required=False, type=str
             ),
             OpenApiParameter(
-                name="is_active",
-                description="Filtrer par statut (true/false)",
-                required=False,
-                type=bool,
+                name="is_active", description="Statut", required=False, type=bool
             ),
             OpenApiParameter(
-                name="director_id",
-                description="Filtrer par directeur (id user)",
-                required=False,
-                type=int,
+                name="director_id", description="Directeur", required=False, type=int
             ),
             OpenApiParameter(
                 name="my_departments",
-                description="Afficher uniquement les départements que je dirige",
+                description="Mes départements",
                 required=False,
                 type=bool,
             ),
             OpenApiParameter(
-                name="ordering",
-                description=(
-                    "Récupère la liste des départements avec recherche, "
-                    "filtres et tri"
-                ),
-                required=False,
-                type=str,
+                name="ordering", description="Tri", required=False, type=str
             ),
         ],
     ),
     retrieve=extend_schema(tags=["Departments"], summary="Détail d'un département"),
     create=extend_schema(tags=["Departments"], summary="Créer un département"),
     update=extend_schema(tags=["Departments"], summary="Mettre à jour un département"),
-    partial_update=extend_schema(
-        tags=["Departments"], summary="Mettre à jour partiellement un département"
-    ),
+    partial_update=extend_schema(tags=["Departments"], summary="Mise à jour partielle"),
     destroy=extend_schema(tags=["Departments"], summary="Supprimer un département"),
 )
 class DepartmentViewSet(ModelViewSet):
     serializer_class = DepartmentSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdminOrReadOnlyDepartmentsDirectory]
     filter_backends = [OrderingFilter]
     ordering_fields = [
         "name",
@@ -140,6 +125,31 @@ class DepartmentViewSet(ModelViewSet):
         "employees_count",
     ]
     ordering = ["-created_at"]
+
+    def _is_scoped_department(self, dept: Department) -> bool:
+        user = self.request.user
+        if user.role == UserRole.ADMIN:
+            return True
+        if dept.director_id == user.id:
+            return True
+        return Teams.objects.filter(department=dept, members=user).exists()
+
+    def get_serializer_class(self):
+        if self.action in ("list", "search"):
+            return DepartmentLiteSerializer
+
+        if self.action == "retrieve":
+            dept = self.get_object()
+            return (
+                DepartmentSerializer
+                if self._is_scoped_department(dept)
+                else DepartmentLiteSerializer
+            )
+
+        if self.action == "my_departments":
+            return DepartmentSerializer
+
+        return DepartmentSerializer
 
     def get_queryset(self):
         teams_count_ann, employees_count_ann = _build_count_annotations()
@@ -161,7 +171,7 @@ class DepartmentViewSet(ModelViewSet):
                 | Q(director__first_name__icontains=search_term)
                 | Q(director__last_name__icontains=search_term)
                 | Q(director__email__icontains=search_term)
-            ).distinct()
+            )
 
         is_active = (self.request.query_params.get("is_active") or "").strip().lower()
         if is_active in ("1", "true", "yes", "y", "on"):
@@ -179,7 +189,21 @@ class DepartmentViewSet(ModelViewSet):
         if my_departments in ("1", "true", "yes", "y", "on"):
             qs = qs.filter(director=self.request.user)
 
-        return qs
+        # ⭐ PIN
+        user = self.request.user
+        if user.is_authenticated and user.role != UserRole.ADMIN:
+            qs = qs.annotate(
+                is_pinned=Case(
+                    When(director=user, then=Value(1)),
+                    When(teams__members=user, then=Value(1)),
+                    default=Value(0),
+                    output_field=IntegerField(),
+                )
+            ).order_by("-is_pinned", "-created_at", "id")
+        else:
+            qs = qs.order_by("-created_at", "id")
+
+        return qs.distinct()
 
     def _apply_sql_ordering(self, queryset):
         ordering = (self.request.query_params.get("ordering") or "").strip()
@@ -198,23 +222,6 @@ class DepartmentViewSet(ModelViewSet):
     def filter_queryset(self, queryset):
         qs = super().filter_queryset(queryset)
         return self._apply_sql_ordering(qs)
-
-    def list(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
-
-        page = self.paginate_queryset(queryset)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(
-            {
-                "data": serializer.data,
-                "total": queryset.count(),
-                "query": request.query_params.get("q", ""),
-            }
-        )
 
     def perform_create(self, serializer):
         safe_cache_delete_pattern(DEPARTMENTS_CACHE_PATTERN)
@@ -240,14 +247,15 @@ class DepartmentViewSet(ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response({"data": serializer.data, "total": queryset.count()})
 
-    @extend_schema(
-        tags=["Departments"],
-        summary="Lister les équipes d'un département",
-        responses={200: TeamsLiteSerializer(many=True)},
-    )
     @action(detail=True, methods=["get"], url_path="teams")
     def teams(self, request, pk=None):
         department = self.get_object()
+
+        if request.user.role != UserRole.ADMIN and not self._is_scoped_department(
+            department
+        ):
+            raise PermissionDenied("Accès refusé.")
+
         qs = (
             Teams.objects.filter(department=department)
             .select_related("owner")
@@ -256,27 +264,6 @@ class DepartmentViewSet(ModelViewSet):
         )
         return Response(TeamsLiteSerializer(qs, many=True).data)
 
-    @extend_schema(
-        tags=["Departments"],
-        summary="Rechercher des départements",
-        parameters=[
-            OpenApiParameter(
-                name="q", description="Terme de recherche", required=True, type=str
-            ),
-            OpenApiParameter(
-                name="page", description="Numéro de page", required=False, type=int
-            ),
-            OpenApiParameter(
-                name="limit",
-                description="Nombre de résultats par page (max 100)",
-                required=False,
-                type=int,
-            ),
-            OpenApiParameter(
-                name="ordering", description="Tri", required=False, type=str
-            ),
-        ],
-    )
     @action(detail=False, methods=["get"], url_path="search")
     def search(self, request):
         search_term = (request.query_params.get("q") or "").strip()
@@ -309,11 +296,6 @@ class DepartmentViewSet(ModelViewSet):
             }
         )
 
-    @extend_schema(
-        tags=["Departments"],
-        summary="Statistiques des départements",
-        description="Total Departments / Total Employees / Avg per Department",
-    )
     @action(detail=False, methods=["get"], url_path="stats")
     def stats(self, request):
         try:
@@ -325,8 +307,7 @@ class DepartmentViewSet(ModelViewSet):
                 round(total_employees / total_departments) if total_departments else 0
             )
             this_month_count = qs.filter(
-                created_at__year=now.year,
-                created_at__month=now.month,
+                created_at__year=now.year, created_at__month=now.month
             ).count()
 
             return Response(
