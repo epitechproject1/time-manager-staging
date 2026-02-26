@@ -21,7 +21,40 @@ class DepartmentMiniSerializer(serializers.ModelSerializer):
         fields = ["id", "name"]
 
 
+class TeamsLiteSerializer(serializers.ModelSerializer):
+    """
+    Annuaire (visible par tous)
+    """
+
+    owner = UserMiniSerializer(read_only=True)
+    department = DepartmentMiniSerializer(read_only=True)
+    members_count = serializers.SerializerMethodField()
+    is_pinned = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Teams
+        fields = [
+            "id",
+            "name",
+            "description",
+            "owner",
+            "department",
+            "members_count",
+            "is_pinned",
+        ]
+
+    def get_members_count(self, obj):
+        annotated = getattr(obj, "members_count", None)
+        if annotated is not None:
+            return annotated
+        return obj.members.count()
+
+
 class TeamsSerializer(serializers.ModelSerializer):
+    """
+    Détails (visible uniquement si scoped via get_serializer_class)
+    """
+
     owner = UserMiniSerializer(read_only=True)
     department = DepartmentMiniSerializer(read_only=True)
 
@@ -34,7 +67,9 @@ class TeamsSerializer(serializers.ModelSerializer):
     members_count = serializers.SerializerMethodField()
 
     members_ids = serializers.ListField(
-        child=serializers.IntegerField(), write_only=True, required=False
+        child=serializers.IntegerField(),
+        write_only=True,
+        required=False,
     )
 
     class Meta:
@@ -56,12 +91,18 @@ class TeamsSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "updated_at", "members_count"]
 
     def get_members_count(self, obj):
+        annotated = getattr(obj, "members_count", None)
+        if annotated is not None:
+            return annotated
         return obj.members.count()
 
     def create(self, validated_data):
         owner_id = validated_data.pop("owner_id", None)
-        department_id = validated_data.pop("department_id")
+        department_id = validated_data.pop("department_id", None)
         members_ids = validated_data.pop("members_ids", [])
+
+        if department_id is None:
+            raise ValidationError({"department_id": "department_id est obligatoire."})
 
         request = self.context.get("request")
         if owner_id is None and request and request.user.is_authenticated:
@@ -75,7 +116,7 @@ class TeamsSerializer(serializers.ModelSerializer):
             team.members.set(User.objects.filter(id__in=members_ids))
 
         if team.owner_id:
-            team.members.add(team.owner)
+            team.members.add(team.owner_id)
 
         return team
 
@@ -83,6 +124,7 @@ class TeamsSerializer(serializers.ModelSerializer):
         owner_id = validated_data.pop("owner_id", None)
         department_id = validated_data.pop("department_id", None)
         members_ids = validated_data.pop("members_ids", None)
+
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
@@ -96,18 +138,13 @@ class TeamsSerializer(serializers.ModelSerializer):
 
         if members_ids is not None:
             instance.members.set(User.objects.filter(id__in=members_ids))
-
             if instance.owner_id:
                 instance.members.add(instance.owner_id)
 
         return instance
 
     def validate(self, attrs):
-        """
-        Règle: le responsable (owner) doit toujours faire partie des membres.
-        - Si members_ids est envoyé et ne contient pas l'owner -> erreur
-        - Si on change owner_id, il doit être inclus aussi
-        """
+
         instance = getattr(self, "instance", None)
 
         current_owner_id = instance.owner_id if instance else None
@@ -117,8 +154,7 @@ class TeamsSerializer(serializers.ModelSerializer):
 
         if members_ids is not None and new_owner_id is not None:
             if new_owner_id not in members_ids:
-                raise ValidationError(
-                    {"Impossible de retirer le responsable de l'équipe des membres."}
-                )
+                msg = "Impossible de retirer le responsable de l'équipe des membres."
+                raise ValidationError({"members_ids": msg})
 
         return attrs
