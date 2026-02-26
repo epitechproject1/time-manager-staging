@@ -1,6 +1,3 @@
-
-from django.db.models import Q
-from drf_spectacular.utils import extend_schema, extend_schema_view
 import csv
 import io
 
@@ -38,54 +35,31 @@ EXPORT_COLUMNS = (
 def _user_filter_parameters(include_file_format=False):
     params = [
         OpenApiParameter(
-            name="q",
-            description="Recherche (nom, prenom, email, telephone, role)",
-            required=False,
-            type=str,
+            "q", description="Recherche globale", required=False, type=str
         ),
         OpenApiParameter(
-            name="role",
-            description="Filtrer par role (ADMIN, MANAGER, USER)",
-            required=False,
-            type=str,
+            "role", description="Filtrer par role", required=False, type=str
         ),
         OpenApiParameter(
-            name="email",
-            description="Filtrer par email (contient)",
-            required=False,
-            type=str,
+            "email", description="Filtrer par email", required=False, type=str
         ),
         OpenApiParameter(
-            name="is_active",
-            description="Filtrer par statut actif (true/false)",
-            required=False,
-            type=bool,
+            "is_active", description="Filtrer par actif", required=False, type=bool
         ),
         OpenApiParameter(
-            name="created_from",
-            description="Date de creation min (YYYY-MM-DD)",
-            required=False,
-            type=str,
+            "created_from", description="Date min", required=False, type=str
         ),
         OpenApiParameter(
-            name="created_to",
-            description="Date de creation max (YYYY-MM-DD)",
-            required=False,
-            type=str,
+            "created_to", description="Date max", required=False, type=str
         ),
-        OpenApiParameter(
-            name="ordering",
-            description="Tri (ex: -created_at, email, role)",
-            required=False,
-            type=str,
-        ),
+        OpenApiParameter("ordering", description="Tri", required=False, type=str),
     ]
 
     if include_file_format:
         params.append(
             OpenApiParameter(
-                name="file_format",
-                description="Format de sortie (csv|pdf). Par defaut: csv",
+                "file_format",
+                description="csv ou pdf",
                 required=False,
                 type=str,
             )
@@ -96,16 +70,37 @@ def _user_filter_parameters(include_file_format=False):
 
 @extend_schema_view(
     list=extend_schema(tags=["Users"], summary="Lister les utilisateurs"),
-    retrieve=extend_schema(tags=["Users"], summary="Detail d'un utilisateur"),
-    create=extend_schema(tags=["Users"], summary="Creer un utilisateur"),
-    update=extend_schema(tags=["Users"], summary="Mettre a jour un utilisateur"),
-    partial_update=extend_schema(
-        tags=["Users"], summary="Mettre a jour partiellement un utilisateur"
-    ),
-    destroy=extend_schema(tags=["Users"], summary="Supprimer un utilisateur"),
+    retrieve=extend_schema(tags=["Users"], summary="Detail utilisateur"),
+    create=extend_schema(tags=["Users"], summary="Creer utilisateur"),
+    update=extend_schema(tags=["Users"], summary="Mettre a jour utilisateur"),
+    partial_update=extend_schema(tags=["Users"], summary="Patch utilisateur"),
+    destroy=extend_schema(tags=["Users"], summary="Supprimer utilisateur"),
 )
 class UserViewSet(ModelViewSet):
     permission_classes = [IsAdminOrOwnerProfile]
+
+    # ----------------------------------------------------------------
+    # Queryset & Serializer
+    # ----------------------------------------------------------------
+
+    def get_queryset(self):
+        user = self.request.user
+
+        if user.role == UserRole.ADMIN:
+            return User.objects.all().order_by("-created_at")
+
+        return User.objects.filter(id=user.id)
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return UserCreateSerializer
+        if self.action in ("update", "partial_update"):
+            return UserUpdateSerializer
+        return UserSerializer
+
+    # ----------------------------------------------------------------
+    # Utils
+    # ----------------------------------------------------------------
 
     @staticmethod
     def _parse_bool(value):
@@ -172,73 +167,29 @@ class UserViewSet(ModelViewSet):
             "updated_at",
             "-updated_at",
         }
+
         if ordering and ordering in allowed_ordering:
             queryset = queryset.order_by(ordering)
 
         return queryset, query
 
-    def get_queryset(self):
-        user = self.request.user
-
-        if user.role == UserRole.ADMIN:
-            return User.objects.all().order_by("-created_at")
-
-        return User.objects.filter(id=user.id)
-
-    def get_serializer_class(self):
-        if self.action == "create":
-            return UserCreateSerializer
-
-        if self.action in ("update", "partial_update"):
-            return UserUpdateSerializer
-
-        return UserSerializer
+    # ----------------------------------------------------------------
+    # Hooks
+    # ----------------------------------------------------------------
 
     def perform_create(self, serializer):
-        """
-        Creation utilisateur + envoi email async
-        """
         user = serializer.save()
-
         raw_password = self.request.data.get("password")
 
         if raw_password:
             run_async(send_welcome_email, user, raw_password)
 
-    @action(detail=False, methods=["get"], url_path="search")
-    def search(self, request):
-        qs = self.get_queryset()
+    # ----------------------------------------------------------------
+    # Custom actions
+    # ----------------------------------------------------------------
 
-        q = (request.query_params.get("q") or "").strip()
-        role = request.query_params.get("role")
-        is_active = request.query_params.get("is_active")
-
-        if q:
-            qs = qs.filter(
-                Q(first_name__icontains=q)
-                | Q(last_name__icontains=q)
-                | Q(email__icontains=q)
-            )
-
-        if role:
-            qs = qs.filter(role=role)
-
-        if is_active is not None:
-            if is_active.lower() in ("true", "1", "yes"):
-                qs = qs.filter(is_active=True)
-            elif is_active.lower() in ("false", "0", "no"):
-                qs = qs.filter(is_active=False)
-
-        serializer = self.get_serializer(qs, many=True)
-        return Response(serializer.data)
-
-    @extend_schema(summary="Récupérer le profil de l'utilisateur connecté")
-    @action(
-        detail=False,
-        methods=["get"],
-        url_path="me",
-        permission_classes=[IsAuthenticated],
-    )
+    @extend_schema(summary="Profil utilisateur connecté")
+    @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated])
     def me(self, request):
         serializer = self.get_serializer(request.user)
         return Response(serializer.data)
@@ -248,7 +199,7 @@ class UserViewSet(ModelViewSet):
         summary="Rechercher des utilisateurs",
         parameters=_user_filter_parameters(),
     )
-    @action(detail=False, methods=["get"], url_path="search")
+    @action(detail=False, methods=["get"])
     def search(self, request):
         queryset = self.get_queryset()
         queryset, query = self._apply_filters(queryset)
@@ -264,26 +215,26 @@ class UserViewSet(ModelViewSet):
 
     @extend_schema(
         tags=["Users"],
-        summary="Exporter des utilisateurs (CSV ou PDF)",
+        summary="Exporter utilisateurs",
         parameters=_user_filter_parameters(include_file_format=True),
     )
-    @action(detail=False, methods=["get"], url_path="export")
+    @action(detail=False, methods=["get"])
     def export(self, request):
         queryset = self.get_queryset()
         queryset, _ = self._apply_filters(queryset)
 
-        output_format = request.query_params.get("file_format") or "csv"
-        output_format = str(output_format).strip().lower()
+        output_format = (request.query_params.get("file_format") or "csv").lower()
 
         if output_format == "pdf":
             return self._export_pdf(queryset)
         if output_format != "csv":
-            return Response(
-                {"detail": "Format invalide. Utilisez csv ou pdf."},
-                status=400,
-            )
+            return Response({"detail": "Format invalide (csv|pdf)"}, status=400)
 
         return self._export_csv(queryset)
+
+    # ----------------------------------------------------------------
+    # Export helpers
+    # ----------------------------------------------------------------
 
     def _export_csv(self, queryset):
         response = HttpResponse(content_type="text/csv")
@@ -295,6 +246,41 @@ class UserViewSet(ModelViewSet):
         for user in queryset:
             writer.writerow(self._user_export_values(user))
 
+        return response
+
+    def _export_pdf(self, queryset):
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.pdfgen import canvas
+        except ImportError:
+            return Response({"detail": "reportlab requis"}, status=500)
+
+        buffer = io.BytesIO()
+        pdf = canvas.Canvas(buffer, pagesize=A4)
+        width, height = A4
+        y = height - 40
+
+        pdf.setFont("Helvetica-Bold", 13)
+        pdf.drawString(40, y, "Export utilisateurs")
+        y -= 24
+
+        pdf.setFont("Helvetica", 9)
+        pdf.drawString(40, y, f"Total: {queryset.count()}")
+        y -= 22
+
+        for user in queryset:
+            for line in self._user_export_values(user):
+                pdf.drawString(40, y, str(line))
+                y -= 14
+            y -= 10
+
+        pdf.save()
+        pdf_data = buffer.getvalue()
+        buffer.close()
+
+        response = HttpResponse(content_type="application/pdf")
+        response["Content-Disposition"] = "attachment; filename=users.pdf"
+        response.write(pdf_data)
         return response
 
     @staticmethod
@@ -311,61 +297,3 @@ class UserViewSet(ModelViewSet):
             user.created_at,
             user.updated_at,
         ]
-
-    def _export_pdf(self, queryset):
-        try:
-            from reportlab.lib.pagesizes import A4
-            from reportlab.pdfgen import canvas
-        except ImportError:
-            return Response(
-                {"detail": "Le package reportlab est requis pour l'export PDF."},
-                status=500,
-            )
-
-        buffer = io.BytesIO()
-        pdf = canvas.Canvas(buffer, pagesize=A4)
-        width, height = A4
-        y = height - 40
-
-        pdf.setFont("Helvetica-Bold", 13)
-        pdf.drawString(40, y, "PrimeBank - Export utilisateurs")
-        y -= 24
-        pdf.setFont("Helvetica", 9)
-        pdf.drawString(40, y, f"Total utilisateurs: {queryset.count()}")
-        y -= 22
-
-        for user in queryset:
-            lines = [
-                f"{column}: {'' if value is None else value}"
-                for column, value in zip(
-                    EXPORT_COLUMNS,
-                    self._user_export_values(user),
-                    strict=False,
-                )
-            ]
-
-            needed_height = 14 * (len(lines) + 1)
-            if y - needed_height < 40:
-                pdf.showPage()
-                y = height - 40
-                pdf.setFont("Helvetica", 9)
-
-            pdf.setFont("Helvetica-Bold", 10)
-            pdf.drawString(40, y, f"Utilisateur #{user.id}")
-            y -= 14
-
-            pdf.setFont("Helvetica", 9)
-            for line in lines:
-                pdf.drawString(52, y, line)
-                y -= 14
-
-            y -= 8
-
-        pdf.save()
-        pdf_data = buffer.getvalue()
-        buffer.close()
-
-        response = HttpResponse(content_type="application/pdf")
-        response["Content-Disposition"] = "attachment; filename=users.pdf"
-        response.write(pdf_data)
-        return response
