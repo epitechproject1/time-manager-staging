@@ -2,11 +2,15 @@ name: Build & Push Docker image (Docker Hub)
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches:
+      - main
+
   push:
-    branches: [develop, main]
+    branches:
+      - main
     tags:
       - "v*.*.*"
+
   workflow_dispatch:
 
 jobs:
