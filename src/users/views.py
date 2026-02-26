@@ -1,3 +1,4 @@
+from django.db.models import Q
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -54,6 +55,33 @@ class UserViewSet(ModelViewSet):
 
         if raw_password:
             run_async(send_welcome_email, user, raw_password)
+
+    @action(detail=False, methods=["get"], url_path="search")
+    def search(self, request):
+        qs = self.get_queryset()
+
+        q = (request.query_params.get("q") or "").strip()
+        role = request.query_params.get("role")
+        is_active = request.query_params.get("is_active")
+
+        if q:
+            qs = qs.filter(
+                Q(first_name__icontains=q)
+                | Q(last_name__icontains=q)
+                | Q(email__icontains=q)
+            )
+
+        if role:
+            qs = qs.filter(role=role)
+
+        if is_active is not None:
+            if is_active.lower() in ("true", "1", "yes"):
+                qs = qs.filter(is_active=True)
+            elif is_active.lower() in ("false", "0", "no"):
+                qs = qs.filter(is_active=False)
+
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
 
     @extend_schema(summary="Récupérer le profil de l'utilisateur connecté")
     @action(

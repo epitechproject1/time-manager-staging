@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from contracts.models import Contract
 from contracts.serializers.contract_type import ContractTypeSerializer
+from users.serializers import UserSerializer
 
 
 class ContractSerializer(serializers.ModelSerializer):
@@ -13,12 +14,14 @@ class ContractSerializer(serializers.ModelSerializer):
     contract_type_detail = ContractTypeSerializer(
         source="contract_type", read_only=True
     )
+    user_detail = UserSerializer(source="user", read_only=True)
 
     class Meta:
         model = Contract
         fields = [
             "id",
             "user",
+            "user_detail",
             "contract_type",
             "contract_type_detail",
             "start_date",

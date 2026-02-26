@@ -1,0 +1,53 @@
+{% extends "emails/base.html" %}
+
+{% block title %}
+Code de validation — PrimeBank
+{% endblock %}
+
+{% block content %}
+
+<p>Bonjour {{ first_name }} {{ last_name }},</p>
+
+<p>
+    Un pointage <strong>{{ event_label }}</strong> vient d'être enregistré sur votre compte
+    <strong>PrimeBank</strong>.
+</p>
+
+<p>Veuillez utiliser le code de validation ci-dessous pour confirmer votre pointage :</p>
+
+<div class="credentials" style="text-align: center;">
+    <p style="
+        margin: 0 0 8px 0;
+        font-size: 12px;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    ">
+        Code de validation
+    </p>
+    <p style="
+        margin: 0;
+        font-size: 36px;
+        font-weight: 700;
+        letter-spacing: 10px;
+        color: #0f172a;
+        font-family: 'Courier New', Courier, monospace;
+    ">
+        {{ code }}
+    </p>
+    <p style="margin: 12px 0 0 0; font-size: 13px; color: #6b7280;">
+        Ce code expire à <strong>{{ expires_at|time:"H:i" }}</strong>
+        &nbsp;·&nbsp; valable <strong>{{ expiration_minutes }} minutes</strong>
+    </p>
+</div>
+
+<p>
+    Si vous n'êtes pas à l'origine de ce pointage, contactez immédiatement votre responsable.
+</p>
+
+<p style="margin-top: 24px;">
+    Cordialement,<br>
+    <strong>L'équipe PrimeBank</strong>
+</p>
+
+{% endblock %}
