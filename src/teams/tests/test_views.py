@@ -27,7 +27,9 @@ def test_list_teams(api_client, normal_user, team, other_team):
 
 
 @pytest.mark.django_db
-def test_filter_teams_by_department(api_client, normal_user, department, team, other_team):
+def test_filter_teams_by_department(
+    api_client, normal_user, department, team, other_team
+):
     api_client.force_authenticate(user=normal_user)
 
     team.department = department
@@ -160,7 +162,9 @@ def test_update_team(api_client, admin_user, team, department):
 
 
 @pytest.mark.django_db
-def test_update_team_forbidden_for_normal_user(api_client, normal_user, team, department):
+def test_update_team_forbidden_for_normal_user(
+    api_client, normal_user, team, department
+):
     api_client.force_authenticate(user=normal_user)
 
     url = reverse("teams-detail", args=[team.id])

@@ -1,5 +1,6 @@
-from rest_framework.permissions import SAFE_METHODS, BasePermission
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.permissions import SAFE_METHODS, BasePermission
+
 from users.constants import UserRole
 
 
@@ -12,15 +13,15 @@ class IsAdminOrReadOnlyDepartmentsDirectory(BasePermission):
     """
 
     DIRECTOR_ALLOWED_ACTIONS = {"export_csv", "export_pdf"}
-    MANAGER_ALLOWED_ACTIONS  = {"export_csv", "export_pdf", "stats"}
-    ADMIN_ONLY_ACTIONS       = {"export_xlsx", "import_csv"}
+    MANAGER_ALLOWED_ACTIONS = {"export_csv", "export_pdf", "stats"}
+    ADMIN_ONLY_ACTIONS = {"export_xlsx", "import_csv"}
 
     def has_permission(self, request, view):
         user = request.user
         if not user or not user.is_authenticated:
             raise PermissionDenied("Authentification requise.")
 
-        role   = getattr(user, "role", None)
+        role = getattr(user, "role", None)
         action = getattr(view, "action", None)
 
         # ── ADMIN : tout est autorisé ─────────────────────────────────────

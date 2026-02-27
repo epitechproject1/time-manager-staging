@@ -1,11 +1,5 @@
 import csv
 import io
-
-from django.http import HttpResponse
-from reportlab.pdfgen import canvas
-from reportlab.lib.units import cm
-from rest_framework.parsers import MultiPartParser, FormParser
-from rest_framework.exceptions import ValidationError, PermissionDenied
 import logging
 from datetime import datetime
 
@@ -22,10 +16,15 @@ from django.db.models import (
     When,
 )
 from django.db.models.functions import Concat, Lower
+from django.http import HttpResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
+from reportlab.lib.units import cm
+from reportlab.pdfgen import canvas
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.filters import OrderingFilter
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
@@ -52,6 +51,7 @@ VALID_ORDERINGS = {
 ADMIN_ROLES = (getattr(UserRole, "ADMIN", "ADMIN"), "ADMIN", "ADMINISTRATEUR")
 MANAGER_ROLES = (getattr(UserRole, "MANAGER", "MANAGER"), "MANAGER")
 
+
 def _role_str(v) -> str:
     return "" if v is None else str(v).strip().upper()
 
@@ -59,6 +59,7 @@ def _role_str(v) -> str:
 def is_role(user, *roles) -> bool:
     current = _role_str(getattr(user, "role", None))
     return any(current == _role_str(r) for r in roles if r is not None)
+
 
 def safe_cache_delete_pattern(pattern: str) -> None:
     try:
@@ -387,7 +388,9 @@ class TeamsViewSet(ModelViewSet):
         user = request.user
 
         if not (is_role(user, *ADMIN_ROLES) or is_role(user, *MANAGER_ROLES)):
-            raise PermissionDenied("Accès refusé. Seul l'administrateur ou le manager peut exporter.")
+            raise PermissionDenied(
+                "Accès refusé. Seul l'administrateur ou le manager peut exporter."
+            )
 
         qs = self.filter_queryset(self.get_queryset())
 
@@ -395,27 +398,41 @@ class TeamsViewSet(ModelViewSet):
         if is_role(user, *MANAGER_ROLES) and not is_role(user, *ADMIN_ROLES):
             qs = qs.filter(owner=user)
             if not qs.exists():
-                raise PermissionDenied("Vous n’êtes responsable d’aucune équipe. Export impossible.")
+                raise PermissionDenied(
+                    "Vous n’êtes responsable d’aucune équipe. Export impossible."
+                )
 
         response = HttpResponse(content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = 'attachment; filename="teams_export.csv"'
         response.write("\ufeff")
 
         writer = csv.writer(response)
-        writer.writerow(["id", "name", "description", "department_id", "department_name",
-                         "owner_id", "owner_email", "members_count"])
+        writer.writerow(
+            [
+                "id",
+                "name",
+                "description",
+                "department_id",
+                "department_name",
+                "owner_id",
+                "owner_email",
+                "members_count",
+            ]
+        )
 
         for t in qs:
-            writer.writerow([
-                t.id,
-                t.name,
-                t.description or "",
-                t.department_id or "",
-                getattr(getattr(t, "department", None), "name", "") or "",
-                t.owner_id or "",
-                getattr(getattr(t, "owner", None), "email", "") or "",
-                getattr(t, "members_count", 0) or 0,
-            ])
+            writer.writerow(
+                [
+                    t.id,
+                    t.name,
+                    t.description or "",
+                    t.department_id or "",
+                    getattr(getattr(t, "department", None), "name", "") or "",
+                    t.owner_id or "",
+                    getattr(getattr(t, "owner", None), "email", "") or "",
+                    getattr(t, "members_count", 0) or 0,
+                ]
+            )
 
         return response
 
@@ -441,7 +458,9 @@ class TeamsViewSet(ModelViewSet):
         reader = csv.DictReader(io.StringIO(content))
         required_cols = {"name"}
         if not reader.fieldnames or not required_cols.issubset(set(reader.fieldnames)):
-            raise ValidationError({"file": f"Colonnes requises: {sorted(required_cols)}"})
+            raise ValidationError(
+                {"file": f"Colonnes requises: {sorted(required_cols)}"}
+            )
 
         created = 0
         updated = 0
@@ -457,7 +476,9 @@ class TeamsViewSet(ModelViewSet):
                 department_id = row.get("department_id")
                 owner_id = row.get("owner_id")
 
-                department_id = int(department_id) if str(department_id).strip() else None
+                department_id = (
+                    int(department_id) if str(department_id).strip() else None
+                )
                 owner_id = int(owner_id) if str(owner_id).strip() else None
 
                 obj, is_created = Teams.objects.update_or_create(
@@ -508,6 +529,7 @@ class TeamsViewSet(ModelViewSet):
         response["Content-Disposition"] = 'attachment; filename="teams_export.pdf"'
 
         from reportlab.lib.pagesizes import A4, landscape
+
         c = canvas.Canvas(response, pagesize=landscape(A4))
         width, height = landscape(A4)
 
@@ -534,8 +556,7 @@ class TeamsViewSet(ModelViewSet):
             ("Liste membres", 0.13),
         ]
         col_widths = [TABLE_W * r for _, r in COLS]
-        col_labels = [l for l, _ in COLS]
-
+        col_labels = [label for label, _ in COLS]
         ROW_H_BASE = 0.65 * cm
         HEADER_H = 0.80 * cm
 
@@ -548,7 +569,7 @@ class TeamsViewSet(ModelViewSet):
 
         def truncate(text, max_chars):
             text = str(text)
-            return text if len(text) <= max_chars else text[:max_chars - 1] + "…"
+            return text if len(text) <= max_chars else text[: max_chars - 1] + "…"
 
         def max_chars_for(col_w, font_size=8):
             return max(int(col_w / (font_size * 0.50)), 6)
@@ -562,7 +583,9 @@ class TeamsViewSet(ModelViewSet):
             c.drawString(MARGIN_X + 0.4 * cm, y - 0.95 * cm, "Gestion des Équipes")
             c.setFont("Helvetica", 9)
             date_str = datetime.now().strftime("%d/%m/%Y à %H:%M")
-            c.drawRightString(width - MARGIN_X - 0.2 * cm, y - 0.95 * cm, f"Exporté le {date_str}")
+            c.drawRightString(
+                width - MARGIN_X - 0.2 * cm, y - 0.95 * cm, f"Exporté le {date_str}"
+            )
 
             c.setFillColorRGB(*GRAY_MID)
             c.setFont("Helvetica-Oblique", 8)
@@ -610,10 +633,7 @@ class TeamsViewSet(ModelViewSet):
             if not members:
                 return draw_row(c, y, ["—"] * len(col_labels), row_index)
 
-            lines = [
-                f"{m.first_name} {m.last_name}  •  {m.email}"
-                for m in members
-            ]
+            lines = [f"{m.first_name} {m.last_name}  •  {m.email}" for m in members]
 
             row_h = max(ROW_H_BASE, len(lines) * 0.50 * cm + 0.20 * cm)
 
@@ -634,8 +654,12 @@ class TeamsViewSet(ModelViewSet):
             c.line(MARGIN_X, MARGIN_Y, width - MARGIN_X, MARGIN_Y)
             c.setFillColorRGB(*GRAY_MID)
             c.setFont("Helvetica", 7)
-            c.drawString(MARGIN_X, MARGIN_Y - 0.35 * cm, "Time Manager — Export confidentiel")
-            c.drawRightString(width - MARGIN_X, MARGIN_Y - 0.35 * cm, f"Page {page_num}")
+            c.drawString(
+                MARGIN_X, MARGIN_Y - 0.35 * cm, "Time Manager — Export confidentiel"
+            )
+            c.drawRightString(
+                width - MARGIN_X, MARGIN_Y - 0.35 * cm, f"Page {page_num}"
+            )
 
         # ── Nouvelle page ─────────────────────────────────────────────────────
         def new_page(c, page_num):
@@ -645,6 +669,7 @@ class TeamsViewSet(ModelViewSet):
             y = height - MARGIN_Y
             y = draw_table_header(c, y)
             return y, page_num
+
         # Rendu
         page_num = 1
         y = height - MARGIN_Y
@@ -655,7 +680,9 @@ class TeamsViewSet(ModelViewSet):
         for row_index, t in enumerate(qs):
             dept = getattr(getattr(t, "department", None), "name", "") or "-"
             owner = getattr(t, "owner", None)
-            owner_name = f"{owner.first_name} {owner.last_name}".strip() if owner else "-"
+            owner_name = (
+                f"{owner.first_name} {owner.last_name}".strip() if owner else "-"
+            )
             owner_email = owner.email if owner else "-"
             members = list(t.members.all().order_by("first_name", "last_name"))
             members_count = str(getattr(t, "members_count", len(members)))
@@ -707,18 +734,26 @@ class TeamsViewSet(ModelViewSet):
                     member_line = f"{m.first_name} {m.last_name}"
                     email_line = m.email
                     c.setFillColorRGB(*GRAY_DARK)
-                    c.drawString(member_x + 0.15 * cm, sub_y - 0.28 * cm,
-                                 truncate(member_line, max_chars_for(member_col_w, 7)))
+                    c.drawString(
+                        member_x + 0.15 * cm,
+                        sub_y - 0.28 * cm,
+                        truncate(member_line, max_chars_for(member_col_w, 7)),
+                    )
                     c.setFont("Helvetica-Oblique", 6.5)
                     c.setFillColorRGB(*GRAY_MID)
-                    c.drawString(member_x + 0.15 * cm, sub_y - 0.48 * cm,
-                                 truncate(email_line, max_chars_for(member_col_w, 6.5)))
+                    c.drawString(
+                        member_x + 0.15 * cm,
+                        sub_y - 0.48 * cm,
+                        truncate(email_line, max_chars_for(member_col_w, 6.5)),
+                    )
                     c.setFont("Helvetica", 7)
                     sub_y -= 0.50 * cm
             else:
                 c.setFillColorRGB(*GRAY_MID)
                 c.setFont("Helvetica-Oblique", 7.5)
-                c.drawString(member_x + 0.15 * cm, y - ROW_H_BASE + 0.18 * cm, "Aucun membre")
+                c.drawString(
+                    member_x + 0.15 * cm, y - ROW_H_BASE + 0.18 * cm, "Aucun membre"
+                )
 
             y -= needed_h
 
@@ -726,6 +761,7 @@ class TeamsViewSet(ModelViewSet):
         c.showPage()
         c.save()
         return response
+
     @action(detail=False, methods=["get"], url_path="stats")
     def stats(self, request):
         try:

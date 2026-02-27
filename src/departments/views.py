@@ -51,7 +51,8 @@ def safe_cache_delete_pattern(pattern: str) -> None:
             delete_pattern(pattern)
         else:
             logger.warning(
-                "Cache backend ne supporte pas delete_pattern(). Pattern ignoré: %s", pattern
+                "Cache backend ne supporte pas delete_pattern(). Pattern ignoré: %s",
+                pattern,
             )
     except Exception:
         logger.exception("Erreur lors de la suppression du cache pattern: %s", pattern)
@@ -73,12 +74,16 @@ def _build_count_annotations():
     employees_whens = [When(pk=pk, then=c) for pk, c in employees_counts.items()]
 
     return (
-        Case(*teams_whens, default=0, output_field=IntegerField())
-        if teams_whens
-        else Case(default=0, output_field=IntegerField()),
-        Case(*employees_whens, default=0, output_field=IntegerField())
-        if employees_whens
-        else Case(default=0, output_field=IntegerField()),
+        (
+            Case(*teams_whens, default=0, output_field=IntegerField())
+            if teams_whens
+            else Case(default=0, output_field=IntegerField())
+        ),
+        (
+            Case(*employees_whens, default=0, output_field=IntegerField())
+            if employees_whens
+            else Case(default=0, output_field=IntegerField())
+        ),
     )
 
 
@@ -88,13 +93,24 @@ def _build_count_annotations():
         summary="Lister les départements",
         description="Récupère la liste des départements avec recherche, filtres et tri",
         parameters=[
-            OpenApiParameter(name="q", description="Recherche", required=False, type=str),
-            OpenApiParameter(name="is_active", description="Statut", required=False, type=bool),
-            OpenApiParameter(name="director_id", description="Directeur", required=False, type=int),
             OpenApiParameter(
-                name="my_departments", description="Mes départements", required=False, type=bool
+                name="q", description="Recherche", required=False, type=str
             ),
-            OpenApiParameter(name="ordering", description="Tri", required=False, type=str),
+            OpenApiParameter(
+                name="is_active", description="Statut", required=False, type=bool
+            ),
+            OpenApiParameter(
+                name="director_id", description="Directeur", required=False, type=int
+            ),
+            OpenApiParameter(
+                name="my_departments",
+                description="Mes départements",
+                required=False,
+                type=bool,
+            ),
+            OpenApiParameter(
+                name="ordering", description="Tri", required=False, type=str
+            ),
         ],
     ),
     retrieve=extend_schema(tags=["Departments"], summary="Détail d'un département"),
@@ -107,7 +123,14 @@ class DepartmentViewSet(ModelViewSet):
     serializer_class = DepartmentSerializer
     permission_classes = [IsAuthenticated, IsAdminOrReadOnlyDepartmentsDirectory]
     filter_backends = [OrderingFilter]
-    ordering_fields = ["name", "created_at", "updated_at", "teams_count", "employees_count", "is_pinned"]
+    ordering_fields = [
+        "name",
+        "created_at",
+        "updated_at",
+        "teams_count",
+        "employees_count",
+        "is_pinned",
+    ]
     ordering = ["-created_at"]
 
     # ---------- Utils ----------
@@ -123,7 +146,10 @@ class DepartmentViewSet(ModelViewSet):
             scoped = qs.filter(teams__owner=user).distinct()
             if not scoped.exists():
                 raise PermissionDenied(
-                    "Vous n'êtes responsable d'aucune équipe. Export des départements impossible."
+                    (
+                        "Vous n'êtes responsable d'aucune équipe. "
+                        "Export des départements impossible."
+                    )
                 )
             return scoped
 
@@ -137,13 +163,22 @@ class DepartmentViewSet(ModelViewSet):
 
     def get_serializer_class(self):
         if self.action in (
-            "list", "search", "export_csv", "export_xlsx", "export_pdf", "my_departments"
+            "list",
+            "search",
+            "export_csv",
+            "export_xlsx",
+            "export_pdf",
+            "my_departments",
         ):
             return DepartmentLiteSerializer
 
         if self.action == "retrieve":
             dept = self.get_object()
-            return DepartmentSerializer if self._is_scoped_department(dept) else DepartmentLiteSerializer
+            return (
+                DepartmentSerializer
+                if self._is_scoped_department(dept)
+                else DepartmentLiteSerializer
+            )
 
         return DepartmentSerializer
 
@@ -158,7 +193,12 @@ class DepartmentViewSet(ModelViewSet):
 
         search_term = (self.request.query_params.get("q") or "").strip()
         if search_term and self.action in (
-            "list", "search", "my_departments", "export_csv", "export_xlsx", "export_pdf"
+            "list",
+            "search",
+            "my_departments",
+            "export_csv",
+            "export_xlsx",
+            "export_pdf",
         ):
             qs = qs.filter(
                 Q(name__icontains=search_term)
@@ -178,13 +218,17 @@ class DepartmentViewSet(ModelViewSet):
         if director_id:
             qs = qs.filter(director_id=director_id)
 
-        my_departments = (self.request.query_params.get("my_departments") or "").strip().lower()
+        my_departments = (
+            (self.request.query_params.get("my_departments") or "").strip().lower()
+        )
         if my_departments in ("1", "true", "yes", "y", "on"):
             qs = qs.filter(director=self.request.user)
 
         user = self.request.user
         if user.is_authenticated and user.role != UserRole.ADMIN:
-            member_exists = Teams.objects.filter(department_id=OuterRef("pk"), members=user)
+            member_exists = Teams.objects.filter(
+                department_id=OuterRef("pk"), members=user
+            )
             qs = qs.annotate(
                 is_pinned=Case(
                     When(Exists(member_exists), then=Value(1)),
@@ -255,7 +299,9 @@ class DepartmentViewSet(ModelViewSet):
     def teams(self, request, pk=None):
         department = Department.objects.select_related("director").get(pk=pk)
 
-        if request.user.role != UserRole.ADMIN and not self._is_scoped_department(department):
+        if request.user.role != UserRole.ADMIN and not self._is_scoped_department(
+            department
+        ):
             raise PermissionDenied("Accès refusé.")
 
         qs = (
@@ -300,7 +346,11 @@ class DepartmentViewSet(ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="export/csv")
     def export_csv(self, request):
-        qs = self.filter_queryset(self._export_queryset_for_user()).order_by("id").distinct()
+        qs = (
+            self.filter_queryset(self._export_queryset_for_user())
+            .order_by("id")
+            .distinct()
+        )
         response = HttpResponse(content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = 'attachment; filename="departments.csv"'
         response.write("\ufeff")
@@ -308,8 +358,17 @@ class DepartmentViewSet(ModelViewSet):
         writer = csv.writer(response, delimiter=";")
         writer.writerow(
             [
-                "ID", "Nom", "Description", "Actif", "Directeur",
-                "Email directeur", "Teams", "Employés", "Pinned", "Créé le", "Mis à jour le",
+                "ID",
+                "Nom",
+                "Description",
+                "Actif",
+                "Directeur",
+                "Email directeur",
+                "Teams",
+                "Employés",
+                "Pinned",
+                "Créé le",
+                "Mis à jour le",
             ]
         )
 
@@ -317,7 +376,9 @@ class DepartmentViewSet(ModelViewSet):
             director_name = ""
             director_email = ""
             if d.director:
-                director_name = f"{d.director.first_name} {d.director.last_name}".strip()
+                director_name = (
+                    f"{d.director.first_name} {d.director.last_name}".strip()
+                )
                 director_email = d.director.email or ""
 
             writer.writerow(
@@ -341,31 +402,35 @@ class DepartmentViewSet(ModelViewSet):
     @action(detail=False, methods=["get"], url_path="export/xlsx")
     def export_xlsx(self, request):
         try:
-            from openpyxl.workbook.workbook import Workbook
+            from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
             from openpyxl.utils.cell import get_column_letter
-            from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+            from openpyxl.workbook.workbook import Workbook
         except ModuleNotFoundError:
             raise ValidationError(
                 {"detail": "Export XLSX indisponible (dépendance openpyxl manquante)."}
             )
 
-        qs = self.filter_queryset(self._export_queryset_for_user()).order_by("id").distinct()
+        qs = (
+            self.filter_queryset(self._export_queryset_for_user())
+            .order_by("id")
+            .distinct()
+        )
         wb = Workbook()
         ws = wb.active
         ws.title = "Départements"
 
-        BLUE_DARK  = "1E3F7A"
-        BLUE_MID   = "1E63C7"
+        BLUE_DARK = "1E3F7A"
+        BLUE_MID = "1E63C7"
         BLUE_LIGHT = "D6E4F7"
-        WHITE      = "FFFFFF"
-        GRAY_TEXT  = "333333"
-        GRAY_BDR   = "C0C8D8"
-        GREEN_BG   = "E6F4EA"
-        GREEN_FG   = "1E7E34"
-        RED_BG     = "FDECEA"
-        RED_FG     = "B71C1C"
-        YELLOW_BG  = "FFF9E6"
-        YELLOW_FG  = "7B5800"
+        WHITE = "FFFFFF"
+        GRAY_TEXT = "333333"
+        GRAY_BDR = "C0C8D8"
+        GREEN_BG = "E6F4EA"
+        GREEN_FG = "1E7E34"
+        RED_BG = "FDECEA"
+        RED_FG = "B71C1C"
+        YELLOW_BG = "FFF9E6"
+        YELLOW_FG = "7B5800"
 
         def fill(hex_color):
             return PatternFill("solid", fgColor=hex_color)
@@ -403,9 +468,17 @@ class DepartmentViewSet(ModelViewSet):
         ws.row_dimensions[3].height = 8
 
         HEADERS = [
-            ("ID", 7), ("Nom", 22), ("Description", 36), ("Statut", 10),
-            ("Directeur", 22), ("Email directeur", 32), ("Équipes", 10),
-            ("Employés", 10), ("Pinned", 10), ("Créé le", 14), ("Mis à jour le", 14),
+            ("ID", 7),
+            ("Nom", 22),
+            ("Description", 36),
+            ("Statut", 10),
+            ("Directeur", 22),
+            ("Email directeur", 32),
+            ("Équipes", 10),
+            ("Employés", 10),
+            ("Pinned", 10),
+            ("Créé le", 14),
+            ("Mis à jour le", 14),
         ]
 
         HDR_ROW = 4
@@ -426,24 +499,31 @@ class DepartmentViewSet(ModelViewSet):
             director_name = ""
             director_email = ""
             if d.director:
-                director_name = f"{d.director.first_name} {d.director.last_name}".strip()
+                director_name = (
+                    f"{d.director.first_name} {d.director.last_name}".strip()
+                )
                 director_email = d.director.email or ""
 
-            is_active  = bool(d.is_active)
-            is_pinned  = bool(int(getattr(d, "is_pinned", 0) or 0))
+            is_active = bool(d.is_active)
+            is_pinned = bool(int(getattr(d, "is_pinned", 0) or 0))
             teams_count = int(getattr(d, "teams_count", 0) or 0)
-            emp_count   = int(getattr(d, "employees_count", 0) or 0)
-            created  = d.created_at.strftime("%d/%m/%Y") if d.created_at else ""
-            updated  = d.updated_at.strftime("%d/%m/%Y") if d.updated_at else ""
+            emp_count = int(getattr(d, "employees_count", 0) or 0)
+            created = d.created_at.strftime("%d/%m/%Y") if d.created_at else ""
+            updated = d.updated_at.strftime("%d/%m/%Y") if d.updated_at else ""
             desc = (d.description or "").replace("\n", " ").strip()
 
             row_data = [
-                d.id, d.name or "", desc,
+                d.id,
+                d.name or "",
+                desc,
                 "Actif" if is_active else "Inactif",
-                director_name or "", director_email or "",
-                teams_count, emp_count,
+                director_name or "",
+                director_email or "",
+                teams_count,
+                emp_count,
                 "✓" if is_pinned else "—",
-                created, updated,
+                created,
+                updated,
             ]
 
             ws.row_dimensions[row_idx].height = 18
@@ -451,24 +531,31 @@ class DepartmentViewSet(ModelViewSet):
             for col_idx, value in enumerate(row_data, start=1):
                 cell = ws.cell(row=row_idx, column=col_idx, value=value)
                 cell.border = thin_border()
-                cell.alignment = align("center") if col_idx in (1, 7, 8, 9) else align("left")
+                cell.alignment = (
+                    align("center") if col_idx in (1, 7, 8, 9) else align("left")
+                )
                 if col_idx == 4:
                     cell.fill = fill(GREEN_BG if is_active else RED_BG)
                     cell.font = Font(
-                        name="Calibri", bold=True, size=9,
+                        name="Calibri",
+                        bold=True,
+                        size=9,
                         color=GREEN_FG if is_active else RED_FG,
                     )
                 elif col_idx == 9:
                     cell.fill = fill(YELLOW_BG if is_pinned else row_bg)
                     cell.font = Font(
-                        name="Calibri", bold=is_pinned, size=9,
+                        name="Calibri",
+                        bold=is_pinned,
+                        size=9,
                         color=YELLOW_FG if is_pinned else GRAY_TEXT,
                     )
                 else:
                     cell.fill = fill(row_bg)
                     cell.font = Font(name="Calibri", size=9, color=GRAY_TEXT)
 
-        ws.auto_filter.ref = f"A{HDR_ROW}:{get_column_letter(len(HEADERS))}{HDR_ROW}"
+        last_col = get_column_letter(len(HEADERS))
+        ws.auto_filter.ref = f"A{HDR_ROW}:{last_col}{HDR_ROW}"
 
         ws2 = wb.create_sheet(title="Résumé")
         ws2.merge_cells("A1:B1")
@@ -482,7 +569,10 @@ class DepartmentViewSet(ModelViewSet):
             ("Total départements", total),
             ("Départements actifs", sum(1 for d in qs if d.is_active)),
             ("Total équipes", sum(int(getattr(d, "teams_count", 0) or 0) for d in qs)),
-            ("Total employés", sum(int(getattr(d, "employees_count", 0) or 0) for d in qs)),
+            (
+                "Total employés",
+                sum(int(getattr(d, "employees_count", 0) or 0) for d in qs),
+            ),
             ("Date export", date_str),
         ]
 
@@ -509,7 +599,9 @@ class DepartmentViewSet(ModelViewSet):
 
         resp = HttpResponse(
             output.getvalue(),
-            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            content_type=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
         )
         resp["Content-Disposition"] = 'attachment; filename="departments_export.xlsx"'
         return resp
@@ -517,16 +609,20 @@ class DepartmentViewSet(ModelViewSet):
     @action(detail=False, methods=["get"], url_path="export/pdf")
     def export_pdf(self, request):
         try:
-            from reportlab.lib.pagesizes import landscape, A4
-            from reportlab.pdfgen import canvas
+            from reportlab.lib.pagesizes import A4, landscape
             from reportlab.lib.units import cm
             from reportlab.pdfbase.pdfmetrics import stringWidth
+            from reportlab.pdfgen import canvas
         except ModuleNotFoundError:
             raise ValidationError(
                 {"detail": "Export PDF indisponible (dépendance reportlab manquante)."}
             )
 
-        qs = self.filter_queryset(self._export_queryset_for_user()).order_by("id").distinct()
+        qs = (
+            self.filter_queryset(self._export_queryset_for_user())
+            .order_by("id")
+            .distinct()
+        )
 
         dept_ids = list(qs.values_list("id", flat=True))
         teams_qs = (
@@ -541,32 +637,39 @@ class DepartmentViewSet(ModelViewSet):
             teams_by_dept.setdefault(t.department_id, []).append(t)
 
         response = HttpResponse(content_type="application/pdf")
-        response["Content-Disposition"] = 'attachment; filename="departments_export.pdf"'
+        response["Content-Disposition"] = (
+            'attachment; filename="departments_export.pdf"'
+        )
 
         c = canvas.Canvas(response, pagesize=landscape(A4))
         width, height = landscape(A4)
 
-        BLUE      = (0.12, 0.39, 0.78)
+        BLUE = (0.12, 0.39, 0.78)
         GRAY_DARK = (0.20, 0.20, 0.20)
-        GRAY_MID  = (0.50, 0.50, 0.50)
+        GRAY_MID = (0.50, 0.50, 0.50)
         GRAY_LIGHT = (0.95, 0.95, 0.95)
-        WHITE     = (1.0, 1.0, 1.0)
-        GREEN     = (0.13, 0.55, 0.13)
-        RED       = (0.75, 0.15, 0.15)
+        WHITE = (1.0, 1.0, 1.0)
+        GREEN = (0.13, 0.55, 0.13)
+        RED = (0.75, 0.15, 0.15)
 
         MARGIN_X = 1.5 * cm
         MARGIN_Y = 1.5 * cm
-        TABLE_W  = width - 2 * MARGIN_X
+        TABLE_W = width - 2 * MARGIN_X
 
         COLS = [
-            ("ID", 0.05), ("Nom", 0.15), ("Description", 0.18), ("Actif", 0.06),
-            ("Directeur", 0.13), ("Email", 0.18), ("Équipes", 0.07),
-            ("Employés", 0.07), ("Créé le", 0.11),
+            ("ID", 0.05),
+            ("Nom", 0.15),
+            ("Description", 0.18),
+            ("Actif", 0.06),
+            ("Directeur", 0.13),
+            ("Email", 0.18),
+            ("Équipes", 0.07),
+            ("Employés", 0.07),
+            ("Créé le", 0.11),
         ]
         col_widths = [TABLE_W * r for _, r in COLS]
-        col_labels = [l for l, _ in COLS]
-
-        ROW_H    = 0.65 * cm
+        col_labels = [label for label, _ in COLS]
+        ROW_H = 0.65 * cm
         HEADER_H = 0.80 * cm
 
         def truncate(text, col_w, font_size=7.5):
@@ -599,7 +702,9 @@ class DepartmentViewSet(ModelViewSet):
             c.drawString(MARGIN_X + 0.4 * cm, y - 0.95 * cm, "Gestion des Départements")
             c.setFont("Helvetica", 9)
             date_str = datetime.now().strftime("%d/%m/%Y à %H:%M")
-            c.drawRightString(width - MARGIN_X - 0.2 * cm, y - 0.95 * cm, f"Exporté le {date_str}")
+            c.drawRightString(
+                width - MARGIN_X - 0.2 * cm, y - 0.95 * cm, f"Exporté le {date_str}"
+            )
             c.setFillColorRGB(*GRAY_MID)
             c.setFont("Helvetica-Oblique", 8)
             c.drawString(MARGIN_X, y - 1.75 * cm, f"{total} département(s) exporté(s)")
@@ -641,17 +746,21 @@ class DepartmentViewSet(ModelViewSet):
             c.line(MARGIN_X, MARGIN_Y, width - MARGIN_X, MARGIN_Y)
             c.setFillColorRGB(*GRAY_MID)
             c.setFont("Helvetica", 7)
-            c.drawString(MARGIN_X, MARGIN_Y - 0.35 * cm, "Time Manager — Export confidentiel")
-            c.drawRightString(width - MARGIN_X, MARGIN_Y - 0.35 * cm, f"Page {page_num}")
+            c.drawString(
+                MARGIN_X, MARGIN_Y - 0.35 * cm, "Time Manager — Export confidentiel"
+            )
+            c.drawRightString(
+                width - MARGIN_X, MARGIN_Y - 0.35 * cm, f"Page {page_num}"
+            )
 
         def new_page(page_num):
             draw_footer(page_num)
             c.showPage()
             return page_num + 1
 
-        total    = qs.count()
+        total = qs.count()
         page_num = 1
-        y        = height - MARGIN_Y
+        y = height - MARGIN_Y
 
         y = draw_doc_header(y, total)
         y -= 0.3 * cm
@@ -666,7 +775,9 @@ class DepartmentViewSet(ModelViewSet):
             director_name = "-"
             director_email = "-"
             if d.director:
-                director_name  = f"{d.director.first_name} {d.director.last_name}".strip() or "-"
+                director_name = (
+                    f"{d.director.first_name} {d.director.last_name}".strip() or "-"
+                )
                 director_email = d.director.email or "-"
 
             row_data = [
@@ -689,11 +800,16 @@ class DepartmentViewSet(ModelViewSet):
             c.rect(MARGIN_X, y - 1.1 * cm, TABLE_W, 1.1 * cm, fill=1, stroke=0)
             c.setFillColorRGB(*WHITE)
             c.setFont("Helvetica-Bold", 14)
-            c.drawString(MARGIN_X + 0.4 * cm, y - 0.75 * cm, f"Département : {dept.name}")
+            c.drawString(
+                MARGIN_X + 0.4 * cm, y - 0.75 * cm, f"Département : {dept.name}"
+            )
             c.setFont("Helvetica", 9)
             director = "-"
             if dept.director:
-                director = f"{dept.director.first_name} {dept.director.last_name}".strip() or "-"
+                director = (
+                    f"{dept.director.first_name} {dept.director.last_name}".strip()
+                    or "-"
+                )
             c.drawRightString(
                 width - MARGIN_X - 0.2 * cm, y - 0.75 * cm, f"Directeur : {director}"
             )
@@ -722,15 +838,19 @@ class DepartmentViewSet(ModelViewSet):
                 c.drawString(MARGIN_X, y, f"• Team : {t.name}")
                 y -= 0.6 * cm
 
-                owner_name  = "-"
+                owner_name = "-"
                 owner_email = "-"
                 if getattr(t, "owner", None):
-                    owner_name  = f"{t.owner.first_name} {t.owner.last_name}".strip() or "-"
+                    owner_name = (
+                        f"{t.owner.first_name} {t.owner.last_name}".strip() or "-"
+                    )
                     owner_email = t.owner.email or "-"
 
                 c.setFont("Helvetica", 9)
                 c.drawString(
-                    MARGIN_X + 0.4 * cm, y, f"Responsable : {owner_name}  ({owner_email})"
+                    MARGIN_X + 0.4 * cm,
+                    y,
+                    f"Responsable : {owner_name}  ({owner_email})",
                 )
                 y -= 0.5 * cm
 
@@ -741,13 +861,18 @@ class DepartmentViewSet(ModelViewSet):
                     y -= 0.6 * cm
                     continue
 
-                members_str = ", ".join(
-                    f"{(m.first_name or '').strip()} {(m.last_name or '').strip()} ({m.email or '-'})".strip()
-                    for m in members
-                )
+                def format_member(member):
+                    first = (member.first_name or "").strip()
+                    last = (member.last_name or "").strip()
+                    email = member.email or "-"
+                    return f"{first} {last} ({email})".strip()
+
+                members_str = ", ".join(format_member(member) for member in members)
 
                 c.setFont("Helvetica", 9)
-                for line in wrap_lines("Membres : " + members_str, TABLE_W - 0.4 * cm, font_size=9):
+                for line in wrap_lines(
+                    "Membres : " + members_str, TABLE_W - 0.4 * cm, font_size=9
+                ):
                     if y < MARGIN_Y + 2.0 * cm:
                         page_num = new_page(page_num)
                         y = height - MARGIN_Y
@@ -764,7 +889,7 @@ class DepartmentViewSet(ModelViewSet):
     @action(detail=False, methods=["get"], url_path="stats")
     def stats(self, request):
         try:
-            now  = datetime.now()
+            now = datetime.now()
             user = request.user
 
             if user.role == UserRole.ADMIN:
@@ -775,11 +900,13 @@ class DepartmentViewSet(ModelViewSet):
                 raise PermissionDenied("Accès refusé.")
 
             total_departments = qs.count()
-            active_count      = qs.filter(is_active=True).count()
-            director_count    = qs.filter(director__isnull=False).count()
-            dept_ids          = list(qs.values_list("id", flat=True))
-            total_employees   = (
-                User.objects.filter(teams__department_id__in=dept_ids).distinct().count()
+            active_count = qs.filter(is_active=True).count()
+            director_count = qs.filter(director__isnull=False).count()
+            dept_ids = list(qs.values_list("id", flat=True))
+            total_employees = (
+                User.objects.filter(teams__department_id__in=dept_ids)
+                .distinct()
+                .count()
             )
             avg_per_department = (
                 round(total_employees / total_departments) if total_departments else 0
@@ -791,12 +918,12 @@ class DepartmentViewSet(ModelViewSet):
             return Response(
                 {
                     "total_departments": total_departments,
-                    "active_count":      active_count,
-                    "director_count":    director_count,
-                    "total_employees":   total_employees,
+                    "active_count": active_count,
+                    "director_count": director_count,
+                    "total_employees": total_employees,
                     "avg_per_department": avg_per_department,
-                    "this_month_count":  this_month_count,
-                    "timestamp":         now.isoformat(),
+                    "this_month_count": this_month_count,
+                    "timestamp": now.isoformat(),
                 }
             )
         except PermissionDenied:

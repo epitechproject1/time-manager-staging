@@ -52,7 +52,6 @@ class TeamsLiteSerializer(serializers.ModelSerializer):
 
 class TeamsSerializer(serializers.ModelSerializer):
 
-
     owner = UserMiniSerializer(read_only=True)
     department = DepartmentMiniSerializer(read_only=True)
 

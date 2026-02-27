@@ -1,5 +1,6 @@
-from rest_framework.permissions import SAFE_METHODS, BasePermission
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.permissions import SAFE_METHODS, BasePermission
+
 from users.constants import UserRole
 
 
@@ -54,7 +55,9 @@ class IsAdminOrReadOnlyTeamsDirectory(BasePermission):
         if request.method in SAFE_METHODS:
             return True
 
-        raise PermissionDenied("Vous n’avez pas le droit de modifier des équipes selon votre poste.")
+        raise PermissionDenied(
+            "Vous n’avez pas le droit de modifier des équipes selon votre poste."
+        )
 
     def has_object_permission(self, request, view, obj):
         return self.has_permission(request, view)
