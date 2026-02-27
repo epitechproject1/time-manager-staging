@@ -1,27 +1,60 @@
 from rest_framework.permissions import SAFE_METHODS, BasePermission
-
+from rest_framework.exceptions import PermissionDenied
 from users.constants import UserRole
 
 
 class IsAdminOrReadOnlyTeamsDirectory(BasePermission):
     """
-    ADMIN:
-      - accès total (CRUD)
-
-    USER/DIRECTOR:
-      - lecture uniquement (GET/HEAD/OPTIONS)
+    ADMIN: accès total (CRUD + stats + export + import)
+    DIRECTOR (si existe): lecture + import_csv uniquement
+    MANAGER (si existe): lecture + export_csv/export_pdf uniquement
+    USER: lecture uniquement
     """
 
-    def has_permission(self, request, view):
-        if not request.user or not request.user.is_authenticated:
-            return False
+    DIRECTOR_ALLOWED_ACTIONS = {"import_csv"}
+    MANAGER_ALLOWED_ACTIONS = {"export_csv", "export_pdf"}
 
-        if request.user.role == UserRole.ADMIN:
+    # ✅ reste admin-only (manager/director interdits)
+    ADMIN_ONLY_ACTIONS = {"stats", "export_xlsx"}
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            raise PermissionDenied("Authentification requise.")
+
+        action = getattr(view, "action", None)
+
+        # ✅ Admin = tout
+        if getattr(user, "role", None) == UserRole.ADMIN:
             return True
 
-        return request.method in SAFE_METHODS
+        # ✅ Director (si existe)
+        director_role = getattr(UserRole, "DIRECTOR", None)
+        if director_role and getattr(user, "role", None) == director_role:
+            if request.method in SAFE_METHODS:
+                return True
+            if action in self.DIRECTOR_ALLOWED_ACTIONS:
+                return True
+            raise PermissionDenied("Accès refusé pour ce rôle.")
+
+        # ✅ Manager (si existe)
+        manager_role = getattr(UserRole, "MANAGER", None)
+        if manager_role and getattr(user, "role", None) == manager_role:
+            if request.method in SAFE_METHODS:
+                return True
+            if action in self.MANAGER_ALLOWED_ACTIONS:
+                return True
+            raise PermissionDenied("Accès refusé pour ce rôle.")
+
+        # ✅ Non-admin: stats / export_xlsx interdits
+        if action in self.ADMIN_ONLY_ACTIONS:
+            raise PermissionDenied("Accès réservé à l'administrateur.")
+
+        # ✅ Lecture OK
+        if request.method in SAFE_METHODS:
+            return True
+
+        raise PermissionDenied("Vous n’avez pas le droit de modifier des équipes selon votre poste.")
 
     def has_object_permission(self, request, view, obj):
-        if request.user.role == UserRole.ADMIN:
-            return True
-        return request.method in SAFE_METHODS
+        return self.has_permission(request, view)

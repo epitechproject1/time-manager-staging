@@ -1,3 +1,11 @@
+import csv
+import io
+
+from django.http import HttpResponse
+from reportlab.pdfgen import canvas
+from reportlab.lib.units import cm
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.exceptions import ValidationError, PermissionDenied
 import logging
 from datetime import datetime
 
@@ -41,7 +49,16 @@ VALID_ORDERINGS = {
     "members_count",
     "-members_count",
 }
+ADMIN_ROLES = (getattr(UserRole, "ADMIN", "ADMIN"), "ADMIN", "ADMINISTRATEUR")
+MANAGER_ROLES = (getattr(UserRole, "MANAGER", "MANAGER"), "MANAGER")
 
+def _role_str(v) -> str:
+    return "" if v is None else str(v).strip().upper()
+
+
+def is_role(user, *roles) -> bool:
+    current = _role_str(getattr(user, "role", None))
+    return any(current == _role_str(r) for r in roles if r is not None)
 
 def safe_cache_delete_pattern(pattern: str) -> None:
     try:
@@ -165,9 +182,9 @@ class TeamsViewSet(ModelViewSet):
             qs = qs.filter(owner=self.request.user)
 
         user = self.request.user
-        if user.is_authenticated and user.role != UserRole.ADMIN:
-            through = Teams.members.through
 
+        if user.is_authenticated and not is_role(user, *ADMIN_ROLES):
+            through = Teams.members.through
             is_member = Exists(
                 through.objects.filter(teams_id=OuterRef("pk"), user_id=user.id)
             )
@@ -251,10 +268,6 @@ class TeamsViewSet(ModelViewSet):
     @action(detail=True, methods=["get"], url_path="members")
     def members(self, request, pk=None):
         team = self.get_object()
-
-        # if request.user.role != UserRole.ADMIN and not self._is_scoped_team(team):
-        #     raise PermissionDenied("Accès refusé.")
-
         q = (request.query_params.get("q") or "").strip()
         ordering = (request.query_params.get("ordering") or "").strip()
 
@@ -369,6 +382,350 @@ class TeamsViewSet(ModelViewSet):
         cache.set(cache_key, response_data, 300)
         return Response(response_data)
 
+    @action(detail=False, methods=["get"], url_path="export/csv")
+    def export_csv(self, request):
+        user = request.user
+
+        if not (is_role(user, *ADMIN_ROLES) or is_role(user, *MANAGER_ROLES)):
+            raise PermissionDenied("Accès refusé. Seul l'administrateur ou le manager peut exporter.")
+
+        qs = self.filter_queryset(self.get_queryset())
+
+        # ✅ manager exporte uniquement ses équipes (responsable = owner)
+        if is_role(user, *MANAGER_ROLES) and not is_role(user, *ADMIN_ROLES):
+            qs = qs.filter(owner=user)
+            if not qs.exists():
+                raise PermissionDenied("Vous n’êtes responsable d’aucune équipe. Export impossible.")
+
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = 'attachment; filename="teams_export.csv"'
+        response.write("\ufeff")
+
+        writer = csv.writer(response)
+        writer.writerow(["id", "name", "description", "department_id", "department_name",
+                         "owner_id", "owner_email", "members_count"])
+
+        for t in qs:
+            writer.writerow([
+                t.id,
+                t.name,
+                t.description or "",
+                t.department_id or "",
+                getattr(getattr(t, "department", None), "name", "") or "",
+                t.owner_id or "",
+                getattr(getattr(t, "owner", None), "email", "") or "",
+                getattr(t, "members_count", 0) or 0,
+            ])
+
+        return response
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="import/csv",
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def import_csv(self, request):
+        if request.user.role != UserRole.ADMIN:
+            raise PermissionDenied("Accès refusé.")
+
+        file = request.FILES.get("file")
+        if not file:
+            raise ValidationError({"file": "Fichier CSV requis (field name = file)."})
+
+        try:
+            content = file.read().decode("utf-8-sig")
+        except Exception:
+            raise ValidationError({"file": "Impossible de lire le fichier en UTF-8."})
+
+        reader = csv.DictReader(io.StringIO(content))
+        required_cols = {"name"}
+        if not reader.fieldnames or not required_cols.issubset(set(reader.fieldnames)):
+            raise ValidationError({"file": f"Colonnes requises: {sorted(required_cols)}"})
+
+        created = 0
+        updated = 0
+        errors = []
+
+        for i, row in enumerate(reader, start=2):
+            try:
+                name = (row.get("name") or "").strip()
+                if not name:
+                    raise ValueError("name vide")
+
+                description = (row.get("description") or "").strip() or None
+                department_id = row.get("department_id")
+                owner_id = row.get("owner_id")
+
+                department_id = int(department_id) if str(department_id).strip() else None
+                owner_id = int(owner_id) if str(owner_id).strip() else None
+
+                obj, is_created = Teams.objects.update_or_create(
+                    name=name,
+                    defaults={
+                        "description": description,
+                        "department_id": department_id,
+                        "owner_id": owner_id,
+                    },
+                )
+                created += 1 if is_created else 0
+                updated += 0 if is_created else 1
+
+            except Exception as e:
+                errors.append({"line": i, "error": str(e), "row": row})
+
+        safe_cache_delete_pattern(TEAMS_CACHE_PATTERN)
+
+        return Response(
+            {
+                "created": created,
+                "updated": updated,
+                "errors": errors,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=False, methods=["get"], url_path="export/pdf")
+    def export_pdf(self, request):
+        user = request.user
+
+        if not (is_role(user, *ADMIN_ROLES) or is_role(user, *MANAGER_ROLES)):
+            raise PermissionDenied(
+                "Accès refusé. Seul l'administrateur ou le manager peut exporter."
+            )
+
+        qs = self.filter_queryset(self.get_queryset()).prefetch_related("members")
+
+        # ✅ manager exporte uniquement ses équipes (responsable = owner)
+        if is_role(user, *MANAGER_ROLES) and not is_role(user, *ADMIN_ROLES):
+            qs = qs.filter(owner=user)
+            if not qs.exists():
+                raise PermissionDenied(
+                    "Vous n’êtes responsable d’aucune équipe. Export impossible."
+                )
+
+        response = HttpResponse(content_type="application/pdf")
+        response["Content-Disposition"] = 'attachment; filename="teams_export.pdf"'
+
+        from reportlab.lib.pagesizes import A4, landscape
+        c = canvas.Canvas(response, pagesize=landscape(A4))
+        width, height = landscape(A4)
+
+        # ── Couleurs ─────────────────────────────────────────────────────────
+        BLUE = (0.12, 0.39, 0.78)
+        GRAY_DARK = (0.20, 0.20, 0.20)
+        GRAY_MID = (0.50, 0.50, 0.50)
+        GRAY_LIGHT = (0.95, 0.95, 0.95)
+        WHITE = (1.0, 1.0, 1.0)
+
+        MARGIN_X = 1.5 * cm
+        MARGIN_Y = 1.5 * cm
+        TABLE_W = width - 2 * MARGIN_X
+
+        # ── Colonnes ─────────────────────────────────────────────────────────
+        COLS = [
+            ("ID", 0.05),
+            ("Équipe", 0.14),
+            ("Description", 0.18),
+            ("Département", 0.12),
+            ("Responsable", 0.13),
+            ("Email", 0.19),
+            ("Membres", 0.06),
+            ("Liste membres", 0.13),
+        ]
+        col_widths = [TABLE_W * r for _, r in COLS]
+        col_labels = [l for l, _ in COLS]
+
+        ROW_H_BASE = 0.65 * cm
+        HEADER_H = 0.80 * cm
+
+        # ── Helpers couleur ──────────────────────────────────────────────────
+        def rgb(c_obj, color):
+            c_obj.setFillColorRGB(*color)
+
+        def stroke(c_obj, color):
+            c_obj.setStrokeColorRGB(*color)
+
+        def truncate(text, max_chars):
+            text = str(text)
+            return text if len(text) <= max_chars else text[:max_chars - 1] + "…"
+
+        def max_chars_for(col_w, font_size=8):
+            return max(int(col_w / (font_size * 0.50)), 6)
+
+        # ── En-tête document ─────────────────────────────────────────────────
+        def draw_doc_header(c, y):
+            c.setFillColorRGB(*BLUE)
+            c.rect(MARGIN_X, y - 1.4 * cm, TABLE_W, 1.4 * cm, fill=1, stroke=0)
+            c.setFillColorRGB(*WHITE)
+            c.setFont("Helvetica-Bold", 16)
+            c.drawString(MARGIN_X + 0.4 * cm, y - 0.95 * cm, "Gestion des Équipes")
+            c.setFont("Helvetica", 9)
+            date_str = datetime.now().strftime("%d/%m/%Y à %H:%M")
+            c.drawRightString(width - MARGIN_X - 0.2 * cm, y - 0.95 * cm, f"Exporté le {date_str}")
+
+            c.setFillColorRGB(*GRAY_MID)
+            c.setFont("Helvetica-Oblique", 8)
+            c.drawString(MARGIN_X, y - 1.75 * cm, f"{qs.count()} équipe(s) exportée(s)")
+
+            return y - 2.2 * cm
+
+        # ── En-tête tableau ──────────────────────────────────────────────────
+        def draw_table_header(c, y):
+            c.setFillColorRGB(*BLUE)
+            c.rect(MARGIN_X, y - HEADER_H, TABLE_W, HEADER_H, fill=1, stroke=0)
+            c.setFillColorRGB(*WHITE)
+            c.setFont("Helvetica-Bold", 8)
+            x = MARGIN_X
+            for label, cw in zip(col_labels, col_widths):
+                c.drawString(x + 0.15 * cm, y - HEADER_H + 0.22 * cm, label)
+                x += cw
+            return y - HEADER_H
+
+        # ── Ligne de données ─────────────────────────────────────────────────
+        def draw_row(c, y, row_data, row_index):
+            bg = GRAY_LIGHT if row_index % 2 == 0 else WHITE
+            c.setFillColorRGB(*bg)
+            c.rect(MARGIN_X, y - ROW_H_BASE, TABLE_W, ROW_H_BASE, fill=1, stroke=0)
+            c.setStrokeColorRGB(0.85, 0.85, 0.85)
+            c.setLineWidth(0.3)
+            c.line(MARGIN_X, y - ROW_H_BASE, MARGIN_X + TABLE_W, y - ROW_H_BASE)
+
+            c.setFillColorRGB(*GRAY_DARK)
+            c.setFont("Helvetica", 7.5)
+            x = MARGIN_X
+            for value, cw in zip(row_data, col_widths):
+                text = truncate(value, max_chars_for(cw, 7.5))
+                c.drawString(x + 0.15 * cm, y - ROW_H_BASE + 0.18 * cm, text)
+                x += cw
+
+            return y - ROW_H_BASE
+
+        # ── Bloc membres (multi-lignes) ───────────────────────────────────────
+        def draw_members_block(c, y, members, row_index):
+            """
+            Affiche chaque membre sur sa propre sous-ligne :
+            Prénom Nom — email
+            """
+            if not members:
+                return draw_row(c, y, ["—"] * len(col_labels), row_index)
+
+            lines = [
+                f"{m.first_name} {m.last_name}  •  {m.email}"
+                for m in members
+            ]
+
+            row_h = max(ROW_H_BASE, len(lines) * 0.50 * cm + 0.20 * cm)
+
+            bg = GRAY_LIGHT if row_index % 2 == 0 else WHITE
+            c.setFillColorRGB(*bg)
+            c.rect(MARGIN_X, y - row_h, TABLE_W, row_h, fill=1, stroke=0)
+
+            c.setStrokeColorRGB(0.85, 0.85, 0.85)
+            c.setLineWidth(0.3)
+            c.line(MARGIN_X, y - row_h, MARGIN_X + TABLE_W, y - row_h)
+
+            return y - row_h, row_h
+
+        # ── Pied de page ─────────────────────────────────────────────────────
+        def draw_footer(c, page_num):
+            c.setStrokeColorRGB(*GRAY_MID)
+            c.setLineWidth(0.5)
+            c.line(MARGIN_X, MARGIN_Y, width - MARGIN_X, MARGIN_Y)
+            c.setFillColorRGB(*GRAY_MID)
+            c.setFont("Helvetica", 7)
+            c.drawString(MARGIN_X, MARGIN_Y - 0.35 * cm, "Time Manager — Export confidentiel")
+            c.drawRightString(width - MARGIN_X, MARGIN_Y - 0.35 * cm, f"Page {page_num}")
+
+        # ── Nouvelle page ─────────────────────────────────────────────────────
+        def new_page(c, page_num):
+            draw_footer(c, page_num)
+            c.showPage()
+            page_num += 1
+            y = height - MARGIN_Y
+            y = draw_table_header(c, y)
+            return y, page_num
+        # Rendu
+        page_num = 1
+        y = height - MARGIN_Y
+        y = draw_doc_header(c, y)
+        y -= 0.3 * cm
+        y = draw_table_header(c, y)
+
+        for row_index, t in enumerate(qs):
+            dept = getattr(getattr(t, "department", None), "name", "") or "-"
+            owner = getattr(t, "owner", None)
+            owner_name = f"{owner.first_name} {owner.last_name}".strip() if owner else "-"
+            owner_email = owner.email if owner else "-"
+            members = list(t.members.all().order_by("first_name", "last_name"))
+            members_count = str(getattr(t, "members_count", len(members)))
+            desc = (t.description or "-").replace("\n", " ")
+
+            # Hauteur nécessaire pour cette ligne (1 sous-ligne par membre)
+            n_member_lines = max(len(members), 1)
+            needed_h = max(ROW_H_BASE, n_member_lines * 0.50 * cm + 0.20 * cm)
+
+            if y - needed_h < MARGIN_Y + 1.0 * cm:
+                y, page_num = new_page(c, page_num)
+
+            # ── Fond de ligne ─────────────────────────────────────────────
+            bg = GRAY_LIGHT if row_index % 2 == 0 else WHITE
+            c.setFillColorRGB(*bg)
+            c.rect(MARGIN_X, y - needed_h, TABLE_W, needed_h, fill=1, stroke=0)
+            c.setStrokeColorRGB(0.85, 0.85, 0.85)
+            c.setLineWidth(0.3)
+            c.line(MARGIN_X, y - needed_h, MARGIN_X + TABLE_W, y - needed_h)
+
+            # ── Données fixes (toutes colonnes sauf liste membres) ────────
+            fixed_data = [
+                str(t.id),
+                t.name,
+                desc,
+                dept,
+                owner_name,
+                owner_email,
+                members_count,
+            ]
+
+            c.setFont("Helvetica", 7.5)
+            c.setFillColorRGB(*GRAY_DARK)
+
+            x = MARGIN_X
+            for value, cw in zip(fixed_data, col_widths[:-1]):
+                text = truncate(value, max_chars_for(cw, 7.5))
+                c.drawString(x + 0.15 * cm, y - ROW_H_BASE + 0.18 * cm, text)
+                x += cw
+
+            # ── Colonne "Liste membres" : une sous-ligne par membre ───────
+            member_x = x
+            member_col_w = col_widths[-1]
+            sub_y = y - 0.18 * cm
+
+            if members:
+                c.setFont("Helvetica", 7)
+                for m in members:
+                    member_line = f"{m.first_name} {m.last_name}"
+                    email_line = m.email
+                    c.setFillColorRGB(*GRAY_DARK)
+                    c.drawString(member_x + 0.15 * cm, sub_y - 0.28 * cm,
+                                 truncate(member_line, max_chars_for(member_col_w, 7)))
+                    c.setFont("Helvetica-Oblique", 6.5)
+                    c.setFillColorRGB(*GRAY_MID)
+                    c.drawString(member_x + 0.15 * cm, sub_y - 0.48 * cm,
+                                 truncate(email_line, max_chars_for(member_col_w, 6.5)))
+                    c.setFont("Helvetica", 7)
+                    sub_y -= 0.50 * cm
+            else:
+                c.setFillColorRGB(*GRAY_MID)
+                c.setFont("Helvetica-Oblique", 7.5)
+                c.drawString(member_x + 0.15 * cm, y - ROW_H_BASE + 0.18 * cm, "Aucun membre")
+
+            y -= needed_h
+
+        draw_footer(c, page_num)
+        c.showPage()
+        c.save()
+        return response
     @action(detail=False, methods=["get"], url_path="stats")
     def stats(self, request):
         try:
