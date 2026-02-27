@@ -16,6 +16,7 @@ class UserMiniSerializer(serializers.ModelSerializer):
 class DepartmentLiteSerializer(serializers.ModelSerializer):
     director = UserMiniSerializer(read_only=True)
     teams_count = serializers.IntegerField(read_only=True)
+    is_pinned = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Department
@@ -25,6 +26,7 @@ class DepartmentLiteSerializer(serializers.ModelSerializer):
             "description",
             "director",
             "is_active",
+            "is_pinned",
             "teams_count",
             "created_at",
             "updated_at",
@@ -44,6 +46,7 @@ class DepartmentSerializer(serializers.ModelSerializer):
 
     teams_count = serializers.IntegerField(read_only=True)
     employees_count = serializers.IntegerField(read_only=True)
+    is_pinned = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Department
@@ -54,6 +57,7 @@ class DepartmentSerializer(serializers.ModelSerializer):
             "director",
             "director_id",
             "is_active",
+            "is_pinned",
             "teams_count",
             "employees_count",
             "created_at",
@@ -65,4 +69,15 @@ class DepartmentSerializer(serializers.ModelSerializer):
         value = (value or "").strip()
         if not value:
             raise ValidationError("Le nom du département est obligatoire.")
+
+        instance = getattr(self, "instance", None)
+        qs = Department.objects.filter(name__iexact=value)
+        if instance:
+            qs = qs.exclude(pk=instance.pk)
+
+        if qs.exists():
+            raise ValidationError(
+                f"Un département portant le nom « {value} » existe déjà."
+            )
+
         return value

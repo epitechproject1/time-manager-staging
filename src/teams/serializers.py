@@ -51,9 +51,6 @@ class TeamsLiteSerializer(serializers.ModelSerializer):
 
 
 class TeamsSerializer(serializers.ModelSerializer):
-    """
-    Détails (visible uniquement si scoped via get_serializer_class)
-    """
 
     owner = UserMiniSerializer(read_only=True)
     department = DepartmentMiniSerializer(read_only=True)
@@ -119,6 +116,22 @@ class TeamsSerializer(serializers.ModelSerializer):
             team.members.add(team.owner_id)
 
         return team
+
+    def validate_name(self, value):
+        value = (value or "").strip()
+        if not value:
+            raise ValidationError("Le nom de l'équipe est obligatoire.")
+
+        instance = getattr(self, "instance", None)
+        qs = Teams.objects.filter(name__iexact=value)
+
+        if instance:
+            qs = qs.exclude(pk=instance.pk)
+
+        if qs.exists():
+            raise ValidationError(f"Une équipe portant le nom « {value} » existe déjà.")
+
+        return value
 
     def update(self, instance, validated_data):
         owner_id = validated_data.pop("owner_id", None)
