@@ -2,27 +2,12 @@ import csv
 import io
 import logging
 from datetime import datetime
-from io import BytesIO
 
 from django.core.cache import cache
-from django.db.models import (
-    Case,
-    Count,
-    Exists,
-    IntegerField,
-    OuterRef,
-    Q,
-    Sum,
-    Value,
-    When,
-)
+from django.db.models import Case, Count, Exists, IntegerField, OuterRef, Q, Value, When
 from django.db.models.functions import Lower
 from django.http import HttpResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
-from openpyxl import Workbook
-from openpyxl.utils import get_column_letter
-from reportlab.lib.pagesizes import A4, landscape
-from reportlab.pdfgen import canvas
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -355,7 +340,14 @@ class DepartmentViewSet(ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="export/xlsx")
     def export_xlsx(self, request):
-        from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+        try:
+            from openpyxl.workbook.workbook import Workbook
+            from openpyxl.utils.cell import get_column_letter
+            from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+        except ModuleNotFoundError:
+            raise ValidationError(
+                {"detail": "Export XLSX indisponible (dépendance openpyxl manquante)."}
+            )
 
         qs = self.filter_queryset(self._export_queryset_for_user()).order_by("id").distinct()
         wb = Workbook()
@@ -524,6 +516,16 @@ class DepartmentViewSet(ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="export/pdf")
     def export_pdf(self, request):
+        try:
+            from reportlab.lib.pagesizes import landscape, A4
+            from reportlab.pdfgen import canvas
+            from reportlab.lib.units import cm
+            from reportlab.pdfbase.pdfmetrics import stringWidth
+        except ModuleNotFoundError:
+            raise ValidationError(
+                {"detail": "Export PDF indisponible (dépendance reportlab manquante)."}
+            )
+
         qs = self.filter_queryset(self._export_queryset_for_user()).order_by("id").distinct()
 
         dept_ids = list(qs.values_list("id", flat=True))
@@ -540,9 +542,6 @@ class DepartmentViewSet(ModelViewSet):
 
         response = HttpResponse(content_type="application/pdf")
         response["Content-Disposition"] = 'attachment; filename="departments_export.pdf"'
-
-        from reportlab.lib.units import cm
-        from reportlab.pdfbase.pdfmetrics import stringWidth
 
         c = canvas.Canvas(response, pagesize=landscape(A4))
         width, height = landscape(A4)
