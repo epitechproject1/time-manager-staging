@@ -38,19 +38,29 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # --- 3rd Party Apps ---
+    "corsheaders",  # <--- [1] AJOUT OBLIGATOIRE ICI
     "rest_framework",
     "rest_framework.authtoken",
     "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
+    # --- Local Apps ---
     "primeBank",
     "jwt_auth",
     "users",
-    "plannings",
-    "comments",
+    "contracts",
+    "notifications",
     "permissions",
     "departments",
-    "clocks",
+    "reset_password",
     "teams",
+    "shift",
+    "week_pattern",
+    "time_slot_pattern",
+    "assignment",
+    "override",
+    "clock_event",
+    "clock_validation",
 ]
 
 # =============================================================================
@@ -60,12 +70,14 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
 
 # =============================================================================
 # URLS / WSGI
@@ -129,12 +141,40 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # =============================================================================
-# EXPORTS EXPLICITES (OBLIGATOIRES)
+# EMAIL (SMTP)
+# =============================================================================
+
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+
+EXPIRY_MINUTES = env("EXPIRY_MINUTES", default=3)
+
+
+EMAIL_HOST = env("EMAIL_HOST", default="smtp.sendgrid.net")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+
+DEFAULT_FROM_EMAIL = env(
+    "DEFAULT_FROM_EMAIL",
+    default="PrimeBank <no-reply@primebank.com>",
+)
+
+# =============================================================================
+# EXPORTS EXPLICITES
 # =============================================================================
 
 __all__ = [
     "BASE_DIR",
     "SECRET_KEY",
+    "EMAIL_BACKEND",
+    "EMAIL_HOST",
+    "EMAIL_PORT",
+    "EMAIL_USE_TLS",
+    "EMAIL_HOST_USER",
+    "EMAIL_HOST_PASSWORD",
+    "EXPIRY_MINUTES",
     "DEBUG",
     "AUTH_USER_MODEL",
     "ALLOWED_HOSTS",

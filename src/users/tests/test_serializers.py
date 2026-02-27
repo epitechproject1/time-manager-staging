@@ -13,6 +13,7 @@ def test_user_serializer_read_only_fields(normal_user):
     assert data["email"] == normal_user.email
     assert "created_at" in data
     assert "updated_at" in data
+    assert data["role"] == normal_user.role
 
 
 @pytest.mark.django_db
@@ -24,6 +25,7 @@ def test_user_create_serializer_success():
             "last_name": "User",
             "phone_number": "0600000000",
             "role": UserRole.USER,
+            "password": "StrongPass123!",
         }
     )
 
@@ -31,6 +33,7 @@ def test_user_create_serializer_success():
     user = serializer.save()
 
     assert user.email == "new@test.com"
+    assert user.check_password("StrongPass123!")  # 🔐 Vérifie le hash
 
 
 @pytest.mark.django_db
@@ -40,12 +43,30 @@ def test_user_create_serializer_duplicate_email(normal_user):
             "email": normal_user.email,
             "first_name": "Test",
             "last_name": "User",
+            "phone_number": "0600000000",
             "role": UserRole.USER,
+            "password": "StrongPass123!",
         }
     )
 
     assert serializer.is_valid() is False
     assert "email" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_user_create_serializer_password_required():
+    serializer = UserCreateSerializer(
+        data={
+            "email": "nopassword@test.com",
+            "first_name": "No",
+            "last_name": "Password",
+            "phone_number": "0600000000",
+            "role": UserRole.USER,
+        }
+    )
+
+    assert serializer.is_valid() is False
+    assert "password" in serializer.errors
 
 
 @pytest.mark.django_db
@@ -63,7 +84,7 @@ def test_user_update_serializer():
         partial=True,
     )
 
-    assert serializer.is_valid()
+    assert serializer.is_valid(), serializer.errors
     user = serializer.save()
 
     assert user.first_name == "New"
