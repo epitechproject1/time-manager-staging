@@ -48,14 +48,19 @@ INSTALLED_APPS = [
     "primeBank",
     "jwt_auth",
     "users",
-    "plannings",
-    "comments",
+    "contracts",
     "notifications",
     "permissions",
     "departments",
     "reset_password",
-    "clocks",
     "teams",
+    "shift",
+    "week_pattern",
+    "time_slot_pattern",
+    "assignment",
+    "override",
+    "clock_event",
+    "clock_validation",
 ]
 
 # =============================================================================
@@ -141,6 +146,9 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
+EXPIRY_MINUTES = env("EXPIRY_MINUTES", default=3)
+
+
 EMAIL_HOST = env("EMAIL_HOST", default="smtp.sendgrid.net")
 EMAIL_PORT = env.int("EMAIL_PORT", default=587)
 EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
@@ -166,6 +174,7 @@ __all__ = [
     "EMAIL_USE_TLS",
     "EMAIL_HOST_USER",
     "EMAIL_HOST_PASSWORD",
+    "EXPIRY_MINUTES",
     "DEBUG",
     "AUTH_USER_MODEL",
     "ALLOWED_HOSTS",
