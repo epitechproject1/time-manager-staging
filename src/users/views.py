@@ -31,8 +31,27 @@ EXPORT_COLUMNS = (
     "updated_at",
 )
 
+EXPORT_COLUMN_LABELS = {
+    "id": "ID",
+    "first_name": "Prenom",
+    "last_name": "Nom",
+    "email": "Email",
+    "phone_number": "Telephone",
+    "role": "Role",
+    "is_active": "Actif",
+    "last_login": "Derniere connexion",
+    "created_at": "Cree le",
+    "updated_at": "Mis a jour le",
+}
 
-def _user_filter_parameters(include_file_format=False):
+DEFAULT_PAGE_SIZE = 10
+MAX_PAGE_SIZE = 500
+DEFAULT_PAGE = 1
+
+
+def _user_filter_parameters(
+    include_file_format=False, include_page_size=False, include_page=False
+):
     params = [
         OpenApiParameter(
             name="q",
@@ -78,6 +97,29 @@ def _user_filter_parameters(include_file_format=False):
         ),
     ]
 
+    if include_page_size:
+        params.append(
+            OpenApiParameter(
+                name="page_size",
+                description=(
+                    "Nombre d'utilisateurs renvoyes par la recherche "
+                    f"(defaut: {DEFAULT_PAGE_SIZE}, max: {MAX_PAGE_SIZE})"
+                ),
+                required=False,
+                type=int,
+            )
+        )
+
+    if include_page:
+        params.append(
+            OpenApiParameter(
+                name="page",
+                description=f"Numero de page (defaut: {DEFAULT_PAGE})",
+                required=False,
+                type=int,
+            )
+        )
+
     if include_file_format:
         params.append(
             OpenApiParameter(
@@ -116,6 +158,36 @@ class UserViewSet(ModelViewSet):
             return False
 
         return None
+
+    @staticmethod
+    def _parse_page_size(value):
+        if value in (None, ""):
+            return DEFAULT_PAGE_SIZE
+
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return DEFAULT_PAGE_SIZE
+
+        if parsed <= 0:
+            return DEFAULT_PAGE_SIZE
+
+        return min(parsed, MAX_PAGE_SIZE)
+
+    @staticmethod
+    def _parse_page(value):
+        if value in (None, ""):
+            return DEFAULT_PAGE
+
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return DEFAULT_PAGE
+
+        if parsed <= 0:
+            return DEFAULT_PAGE
+
+        return parsed
 
     def _apply_filters(self, queryset):
         query = (self.request.query_params.get("q") or "").strip()
@@ -216,19 +288,29 @@ class UserViewSet(ModelViewSet):
     @extend_schema(
         tags=["Users"],
         summary="Rechercher des utilisateurs",
-        parameters=_user_filter_parameters(),
+        parameters=_user_filter_parameters(include_page_size=True, include_page=True),
     )
     @action(detail=False, methods=["get"], url_path="search")
     def search(self, request):
         queryset = self.get_queryset()
         queryset, query = self._apply_filters(queryset)
+        total = queryset.count()
+        page_size = self._parse_page_size(request.query_params.get("page_size"))
+        page = self._parse_page(request.query_params.get("page"))
+        start = (page - 1) * page_size
+        end = start + page_size
+        queryset = queryset[start:end]
+        total_pages = max((total + page_size - 1) // page_size, 1)
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(
             {
                 "data": serializer.data,
-                "total": queryset.count(),
+                "total": total,
                 "query": query,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": total_pages,
             }
         )
 
@@ -241,6 +323,7 @@ class UserViewSet(ModelViewSet):
     def export(self, request):
         queryset = self.get_queryset()
         queryset, _ = self._apply_filters(queryset)
+        queryset = queryset.order_by("id")
 
         output_format = request.query_params.get("file_format") or "csv"
         output_format = str(output_format).strip().lower()
@@ -256,14 +339,19 @@ class UserViewSet(ModelViewSet):
         return self._export_csv(queryset)
 
     def _export_csv(self, queryset):
-        response = HttpResponse(content_type="text/csv")
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = "attachment; filename=users.csv"
+        # BOM UTF-8 pour que Excel detecte correctement l'encodage.
+        response.write("\ufeff")
 
-        writer = csv.writer(response)
-        writer.writerow(EXPORT_COLUMNS)
+        # Delimiteur ';' pour un affichage en colonnes correct dans Excel FR
+        writer = csv.writer(response, delimiter=";", lineterminator="\n")
+        # Indique explicitement le separateur pour Excel.
+        response.write("sep=;\n")
+        writer.writerow([EXPORT_COLUMN_LABELS[column] for column in EXPORT_COLUMNS])
 
         for user in queryset:
-            writer.writerow(self._user_export_values(user))
+            writer.writerow(self._format_export_values(self._user_export_values(user)))
 
         return response
 
@@ -282,10 +370,30 @@ class UserViewSet(ModelViewSet):
             user.updated_at,
         ]
 
+    @staticmethod
+    def _format_export_values(values):
+        formatted = []
+        for value in values:
+            if value is None:
+                formatted.append("")
+            elif isinstance(value, bool):
+                formatted.append("Oui" if value else "Non")
+            else:
+                formatted.append(str(value))
+        return formatted
+
     def _export_pdf(self, queryset):
         try:
-            from reportlab.lib.pagesizes import A4
-            from reportlab.pdfgen import canvas
+            from reportlab.lib import colors
+            from reportlab.lib.pagesizes import A4, landscape
+            from reportlab.lib.styles import getSampleStyleSheet
+            from reportlab.platypus import (
+                Paragraph,
+                SimpleDocTemplate,
+                Spacer,
+                Table,
+                TableStyle,
+            )
         except ImportError:
             return Response(
                 {"detail": "Le package reportlab est requis pour l'export PDF."},
@@ -293,45 +401,51 @@ class UserViewSet(ModelViewSet):
             )
 
         buffer = io.BytesIO()
-        pdf = canvas.Canvas(buffer, pagesize=A4)
-        width, height = A4
-        y = height - 40
+        document = SimpleDocTemplate(
+            buffer,
+            pagesize=landscape(A4),
+            leftMargin=24,
+            rightMargin=24,
+            topMargin=24,
+            bottomMargin=24,
+        )
+        styles = getSampleStyleSheet()
 
-        pdf.setFont("Helvetica-Bold", 13)
-        pdf.drawString(40, y, "PrimeBank - Export utilisateurs")
-        y -= 24
-        pdf.setFont("Helvetica", 9)
-        pdf.drawString(40, y, f"Total utilisateurs: {queryset.count()}")
-        y -= 22
+        title = Paragraph("PrimeBank - Export utilisateurs", styles["Heading2"])
+        subtitle = Paragraph(
+            f"Total utilisateurs: {queryset.count()}",
+            styles["Normal"],
+        )
+
+        table_headers = [EXPORT_COLUMN_LABELS[column] for column in EXPORT_COLUMNS]
+        table_rows = [table_headers]
 
         for user in queryset:
-            lines = [
-                f"{column}: {'' if value is None else value}"
-                for column, value in zip(
-                    EXPORT_COLUMNS,
-                    self._user_export_values(user),
-                    strict=False,
-                )
-            ]
+            row = self._format_export_values(self._user_export_values(user))
+            table_rows.append(row)
 
-            needed_height = 14 * (len(lines) + 1)
-            if y - needed_height < 40:
-                pdf.showPage()
-                y = height - 40
-                pdf.setFont("Helvetica", 9)
+        table = Table(table_rows, repeatRows=1)
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F2937")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
+                    ("ALIGN", (0, 0), (0, -1), "CENTER"),
+                    ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+                    (
+                        "ROWBACKGROUNDS",
+                        (0, 1),
+                        (-1, -1),
+                        [colors.white, colors.HexColor("#F8FAFC")],
+                    ),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ]
+            )
+        )
 
-            pdf.setFont("Helvetica-Bold", 10)
-            pdf.drawString(40, y, f"Utilisateur #{user.id}")
-            y -= 14
-
-            pdf.setFont("Helvetica", 9)
-            for line in lines:
-                pdf.drawString(52, y, line)
-                y -= 14
-
-            y -= 8
-
-        pdf.save()
+        document.build([title, subtitle, Spacer(1, 12), table])
         pdf_data = buffer.getvalue()
         buffer.close()
 
