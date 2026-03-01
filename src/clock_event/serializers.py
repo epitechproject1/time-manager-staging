@@ -1,22 +1,40 @@
+from datetime import datetime, timedelta
+
+from django.conf import settings
+from django.utils import timezone
 from rest_framework import serializers
 
 from shift.models import Shift
 
 from .models import ClockEvent
 
+# ─────────────────────────────────────
+# CONFIG
+# ─────────────────────────────────────
+CLOCK_IN_TOLERANCE_MINUTES = settings.CLOCK_IN_TOLERANCE_MINUTES
+CLOCK_OUT_TOLERANCE_MINUTES = settings.CLOCK_OUT_TOLERANCE_MINUTES
 
+
+# ─────────────────────────────────────
+# CLOCK EVENT (LECTURE)
+# ─────────────────────────────────────
 class ClockEventSerializer(serializers.ModelSerializer):
     """
-    Lecture d'un ClockEvent.
-    Utilisé dans les réponses, le listing et par clock_validation.
+    Serializer de lecture d'un ClockEvent.
     """
 
     user_email = serializers.EmailField(source="user.email", read_only=True)
     shift_date = serializers.DateField(source="shift.date", read_only=True)
+
     event_type_label = serializers.CharField(
-        source="get_event_type_display", read_only=True
+        source="get_event_type_display",
+        read_only=True,
     )
-    status_label = serializers.CharField(source="get_status_display", read_only=True)
+
+    status_label = serializers.CharField(
+        source="get_status_display",
+        read_only=True,
+    )
 
     class Meta:
         model = ClockEvent
@@ -47,70 +65,115 @@ class ClockEventSerializer(serializers.ModelSerializer):
         ]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────
+# HELPERS
+# ─────────────────────────────────────
+def get_shift_datetimes(shift: Shift):
+    """Retourne les datetime aware du début et de la fin du shift."""
+    start_dt = timezone.make_aware(datetime.combine(shift.date, shift.start_time))
+    end_dt = timezone.make_aware(datetime.combine(shift.date, shift.end_time))
+    return start_dt, end_dt
+
+
+# ─────────────────────────────────────
 # CLOCK IN
-# ─────────────────────────────────────────────────────────────────────────────
-
-
+# ─────────────────────────────────────
 class ClockInSerializer(serializers.Serializer):
-    """Payload pour pointer le début d'un shift."""
+    """
+    Payload pour pointer le début d'un shift.
+    """
 
-    shift_id = serializers.IntegerField()
+    shift = serializers.PrimaryKeyRelatedField(queryset=Shift.objects.all())
 
-    def validate_shift_id(self, value):
-        try:
-            shift = Shift.objects.get(pk=value)
-        except Shift.DoesNotExist:
-            raise serializers.ValidationError("Shift introuvable.")
+    def validate(self, data):
+        request = self.context["request"]
+        shift = data["shift"]
+        now = timezone.localtime()
 
+        # ───── utilisateur propriétaire
+        if shift.user != request.user:
+            raise serializers.ValidationError("Vous ne pouvez pas pointer ce shift.")
+
+        # ───── type autorisé
         if shift.shift_type not in [Shift.ShiftType.WORK, Shift.ShiftType.BREAK]:
-            raise serializers.ValidationError(
-                "Impossible de pointer sur un shift de type HOLIDAY ou OFF."
-            )
+            raise serializers.ValidationError("Impossible de pointer ce type de shift.")
 
+        # ───── déjà pointé
         if ClockEvent.objects.filter(
             shift=shift,
             event_type=ClockEvent.EventType.CLOCK_IN,
         ).exists():
+            raise serializers.ValidationError("Un pointage d'entrée existe déjà.")
+
+        start_dt, end_dt = get_shift_datetimes(shift)
+        tolerance = timedelta(minutes=CLOCK_IN_TOLERANCE_MINUTES)
+
+        # ───── uniquement aujourd’hui
+        if shift.date != now.date():
             raise serializers.ValidationError(
-                "Un pointage d'entrée existe déjà pour ce shift."
+                "Vous ne pouvez pointer que les shifts du jour."
             )
 
-        return value
+        # ───── trop tôt
+        if now < start_dt - tolerance:
+            raise serializers.ValidationError("Le shift n’a pas encore commencé.")
+
+        # ───── trop tard
+        if now > end_dt:
+            raise serializers.ValidationError("Le shift est terminé.")
+
+        return data
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────
 # CLOCK OUT
-# ─────────────────────────────────────────────────────────────────────────────
-
-
+# ─────────────────────────────────────
 class ClockOutSerializer(serializers.Serializer):
-    """Payload pour pointer la fin d'un shift."""
+    """
+    Payload pour pointer la fin d'un shift.
+    """
 
-    shift_id = serializers.IntegerField()
+    shift = serializers.PrimaryKeyRelatedField(queryset=Shift.objects.all())
 
-    def validate_shift_id(self, value):
-        try:
-            shift = Shift.objects.get(pk=value)
-        except Shift.DoesNotExist:
-            raise serializers.ValidationError("Shift introuvable.")
+    def validate(self, data):
+        request = self.context["request"]
+        shift = data["shift"]
+        now = timezone.localtime()
 
-        # Un CLOCK_IN approuvé doit exister avant de pouvoir faire un CLOCK_OUT
+        # ───── utilisateur propriétaire
+        if shift.user != request.user:
+            raise serializers.ValidationError("Vous ne pouvez pas pointer ce shift.")
+
+        # ───── CLOCK IN obligatoire
         if not ClockEvent.objects.filter(
             shift=shift,
             event_type=ClockEvent.EventType.CLOCK_IN,
             status=ClockEvent.Status.APPROVED,
         ).exists():
-            raise serializers.ValidationError(
-                "Aucun pointage d'entrée approuvé pour ce shift."
-            )
+            raise serializers.ValidationError("Aucun pointage d'entrée approuvé.")
 
+        # ───── déjà clock out
         if ClockEvent.objects.filter(
             shift=shift,
             event_type=ClockEvent.EventType.CLOCK_OUT,
         ).exists():
+            raise serializers.ValidationError("Un pointage de sortie existe déjà.")
+
+        start_dt, end_dt = get_shift_datetimes(shift)
+        tolerance = timedelta(minutes=CLOCK_OUT_TOLERANCE_MINUTES)
+
+        # ───── uniquement aujourd’hui
+        if shift.date != now.date():
             raise serializers.ValidationError(
-                "Un pointage de sortie existe déjà pour ce shift."
+                "Impossible de pointer ce shift aujourd’hui."
             )
 
-        return value
+        # ───── pas encore commencé
+        if now < start_dt:
+            raise serializers.ValidationError("Le shift n’a pas encore commencé.")
+
+        # ───── trop tard
+        if now > end_dt + tolerance:
+            raise serializers.ValidationError("La fenêtre de pointage est expirée.")
+
+        return data

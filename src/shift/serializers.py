@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from assignment.serializers import ScheduleAssignmentSerializer
+from clock_event.models import ClockEvent
 from shift.models import Shift
 from users.serializers import UserSerializer
 
@@ -8,6 +9,7 @@ from users.serializers import UserSerializer
 class ShiftSerializer(serializers.ModelSerializer):
     """
     Serializer des occurrences réelles de planning.
+    Inclut le statut de pointage calculé.
     """
 
     user_detail = UserSerializer(source="user", read_only=True)
@@ -15,11 +17,12 @@ class ShiftSerializer(serializers.ModelSerializer):
         source="assignment", read_only=True
     )
 
-    # 👉 display du type de shift
     shift_type_display = serializers.CharField(
         source="get_shift_type_display",
         read_only=True,
     )
+
+    clock_status = serializers.SerializerMethodField()
 
     class Meta:
         model = Shift
@@ -33,25 +36,64 @@ class ShiftSerializer(serializers.ModelSerializer):
             "start_time",
             "end_time",
             "shift_type",
-            "shift_type_display",  # ✅ display ajouté
+            "shift_type_display",
+            "clock_status",  # ✅ ajouté
             "overridden",
             "created_at",
         ]
         read_only_fields = ["created_at"]
 
-    def validate(self, attrs):
+    # ─────────────────────────────
+    # CLOCK STATUS
+    # ─────────────────────────────
+    def get_clock_status(self, obj):
         """
-        Validation cohérente avec la logique métier du modèle.
+        Retourne le statut de pointage basé sur les ClockEvents.
         """
 
+        events = obj.clock_events.all()
+
+        clock_in = next(
+            (e for e in events if e.event_type == ClockEvent.EventType.CLOCK_IN),
+            None,
+        )
+
+        clock_out = next(
+            (e for e in events if e.event_type == ClockEvent.EventType.CLOCK_OUT),
+            None,
+        )
+
+        if not clock_in:
+            return "NOT_STARTED"
+
+        if clock_in.status == ClockEvent.Status.PENDING:
+            return "CLOCK_IN_PENDING"
+
+        if clock_in.status == ClockEvent.Status.APPROVED and not clock_out:
+            return "IN_PROGRESS"
+
+        if clock_out and clock_out.status == ClockEvent.Status.PENDING:
+            return "CLOCK_OUT_PENDING"
+
+        if clock_out and clock_out.status == ClockEvent.Status.APPROVED:
+            return "COMPLETED"
+
+        return "NOT_STARTED"
+
+    # ─────────────────────────────
+    # VALIDATION MÉTIER
+    # ─────────────────────────────
+    def validate(self, attrs):
         shift_type = attrs.get(
             "shift_type",
             getattr(self.instance, "shift_type", None),
         )
+
         start_time = attrs.get(
             "start_time",
             getattr(self.instance, "start_time", None),
         )
+
         end_time = attrs.get(
             "end_time",
             getattr(self.instance, "end_time", None),
