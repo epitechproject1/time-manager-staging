@@ -38,4 +38,5 @@ urlpatterns = [
     path("api/", include("week_pattern.urls")),
     path("api/", include("clock_event.urls")),
     path("api/", include("clock_validation.urls")),
+    path("api/", include("kpi.urls")),
 ]

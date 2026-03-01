@@ -1,10 +1,10 @@
 from rest_framework.routers import DefaultRouter
 
-from override.views import ShiftOverrideViewSet
+from shift.views import ShiftViewSet
 
 router = DefaultRouter()
 
 # Exceptions
-router.register("shift-overrides", ShiftOverrideViewSet, basename="shift-override")
+router.register("shifts", ShiftViewSet, basename="shifts")
 
 urlpatterns = router.urls

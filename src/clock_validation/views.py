@@ -13,55 +13,45 @@ class ClockValidationViewSet(
     mixins.RetrieveModelMixin,
     viewsets.GenericViewSet,
 ):
+    """
+    Gestion de la validation des pointages via code.
+
+    POST /clock-validation/submit/ → soumettre un code
+    GET  /clock-validation/{id}/   → consulter un code
+    """
 
     permission_classes = [IsAuthenticated]
     serializer_class = ClockValidationCodeSerializer
 
+    # ─────────────────────────────
+    # QUERYSET
+    # ─────────────────────────────
     def get_queryset(self):
         return ClockValidationCode.objects.filter(
             clock_event__user=self.request.user
         ).select_related("clock_event__user", "clock_event__shift")
 
     # ─────────────────────────────
-    # SUBMIT
+    # SUBMIT CODE
     # ─────────────────────────────
     @action(detail=False, methods=["post"], url_path="submit")
     def submit(self, request):
         """
-        L'employé soumet le code à 6 chiffres reçu après son pointage.
+        L'utilisateur soumet le code reçu par email.
 
-        Recherche le dernier code PENDING de l'utilisateur connecté.
-        Délègue la vérification à ClockValidationCode.verify().
-
-        Réponses :
-          200 → code valide, ClockEvent approuvé
-          400 → code invalide ou expiré, ClockEvent rejeté
-          404 → aucun code en attente trouvé
+        200 → code valide, ClockEvent approuvé
+        400 → code invalide ou expiré
         """
+
         serializer = SubmitCodeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        validation = serializer.validated_data["validation"]
         submitted_code = serializer.validated_data["code"]
-
-        validation = (
-            ClockValidationCode.objects.filter(
-                clock_event__user=request.user,
-                status=ClockValidationCode.Status.PENDING,
-            )
-            .select_related("clock_event__user", "clock_event__shift")
-            .order_by("-created_at")
-            .first()
-        )
-
-        if not validation:
-            return Response(
-                {"detail": "Aucun code en attente."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
 
         success = validation.verify(submitted_code)
 
-        # Recharge les instances pour avoir les statuts à jour en DB
+        # 🔄 rafraîchir pour récupérer statuts à jour
         validation.refresh_from_db()
         validation.clock_event.refresh_from_db()
 
