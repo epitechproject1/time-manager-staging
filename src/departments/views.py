@@ -312,6 +312,33 @@ class DepartmentViewSet(ModelViewSet):
         )
         return Response(TeamsLiteSerializer(qs, many=True).data)
 
+    @action(detail=False, methods=["get"], url_path="stats-breakdown")
+    def stats_breakdown(self, request):
+        user = request.user
+
+        qs = Department.objects.all()
+
+        if user.role == UserRole.ADMIN:
+            pass
+        elif user.role == UserRole.MANAGER:
+            qs = qs.filter(teams__owner=user).distinct()
+        else:
+            qs = qs.filter(teams__members=user).distinct()
+
+        if not qs.exists():
+            raise PermissionDenied("Aucun département accessible.")
+
+        data = (
+            qs.annotate(
+                teams_count=Count("teams", distinct=True),
+                members_count=Count("teams__members", distinct=True),
+            )
+            .values("id", "name", "teams_count", "members_count")
+            .order_by("name")
+        )
+
+        return Response(list(data))
+
     @action(detail=False, methods=["get"], url_path="search")
     def search(self, request):
         search_term = (request.query_params.get("q") or "").strip()

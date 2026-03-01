@@ -383,6 +383,36 @@ class TeamsViewSet(ModelViewSet):
         cache.set(cache_key, response_data, 300)
         return Response(response_data)
 
+    @action(detail=False, methods=["get"], url_path="stats-breakdown")
+    def stats_breakdown(self, request):
+        user = request.user
+        department_id = request.query_params.get("department_id")
+
+        qs = Teams.objects.select_related("department").annotate(
+            members_count=Count("members", distinct=True)
+        )
+
+        if user.role != UserRole.ADMIN:
+            qs = qs.filter(
+                Q(owner=user) | Q(members=user) | Q(department__director=user)
+            ).distinct()
+
+        if department_id:
+            qs = qs.filter(department_id=department_id)
+
+        if not qs.exists():
+            raise PermissionDenied("Aucune équipe accessible.")
+
+        data = qs.values(
+            "id",
+            "name",
+            "department_id",
+            "department__name",
+            "members_count",
+        ).order_by("department__name", "name")
+
+        return Response(list(data))
+
     @action(detail=False, methods=["get"], url_path="export/csv")
     def export_csv(self, request):
         user = request.user
