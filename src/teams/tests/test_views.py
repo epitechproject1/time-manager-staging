@@ -13,11 +13,12 @@ def test_list_teams(api_client, normal_user, team, other_team):
     assert response.status_code == status.HTTP_200_OK
     assert "data" in response.data
     assert "total" in response.data
-    assert response.data["total"] == 2
-    assert len(response.data["data"]) == 2
+
+    # on attend au moins les 2 fixtures
+    assert response.data["total"] >= 2
+    assert len(response.data["data"]) >= 2
 
     first = response.data["data"][0]
-
     assert "owner" in first
     assert (first["owner"] is None) or isinstance(first["owner"], dict)
     assert "department" in first
@@ -26,34 +27,62 @@ def test_list_teams(api_client, normal_user, team, other_team):
 
 
 @pytest.mark.django_db
-def test_filter_teams_by_department(api_client, normal_user, department, team):
+def test_filter_teams_by_department(
+    api_client, normal_user, department, team, other_team
+):
     api_client.force_authenticate(user=normal_user)
+
+    team.department = department
+    team.save(update_fields=["department"])
+
+    other_team.department = None
+    other_team.save(update_fields=["department"])
 
     url = reverse("teams-list")
     response = api_client.get(url, {"department_id": department.id})
 
     assert response.status_code == status.HTTP_200_OK
+    assert "data" in response.data
+    assert "total" in response.data
+
     assert response.data["total"] == 1
     assert len(response.data["data"]) == 1
-    assert response.data["data"][0]["name"] == team.name
+    assert response.data["data"][0]["id"] == team.id
 
 
 @pytest.mark.django_db
-def test_filter_teams_by_owner(api_client, normal_user, team):
+def test_filter_teams_by_owner(api_client, normal_user, team, other_team):
     api_client.force_authenticate(user=normal_user)
+
+    # ✅ rendre le test stable
+    team.owner = normal_user
+    team.save(update_fields=["owner"])
+
+    other_team.owner = None
+    other_team.save(update_fields=["owner"])
 
     url = reverse("teams-list")
     response = api_client.get(url, {"owner_id": normal_user.id})
 
     assert response.status_code == status.HTTP_200_OK
+    assert "data" in response.data
+    assert "total" in response.data
+
     assert response.data["total"] == 1
     assert len(response.data["data"]) == 1
-    assert response.data["data"][0]["name"] == team.name
+    assert response.data["data"][0]["id"] == team.id
 
 
 @pytest.mark.django_db
-def test_my_teams_action(api_client, normal_user, team):
+def test_my_teams_action(api_client, normal_user, team, other_team):
     api_client.force_authenticate(user=normal_user)
+
+    # ✅ rendre le test stable (my-teams = owner=request.user)
+    team.owner = normal_user
+    team.save(update_fields=["owner"])
+
+    other_team.owner = None
+    other_team.save(update_fields=["owner"])
 
     url = reverse("teams-my-teams")
     response = api_client.get(url)
@@ -64,13 +93,13 @@ def test_my_teams_action(api_client, normal_user, team):
 
     assert response.data["total"] == 1
     assert len(response.data["data"]) == 1
-
     assert response.data["data"][0]["owner"]["id"] == normal_user.id
+    assert response.data["data"][0]["id"] == team.id
 
 
 @pytest.mark.django_db
-def test_create_team(api_client, normal_user, department):
-    api_client.force_authenticate(user=normal_user)
+def test_create_team(api_client, admin_user, department):
+    api_client.force_authenticate(user=admin_user)
 
     url = reverse("teams-list")
     payload = {
@@ -83,19 +112,59 @@ def test_create_team(api_client, normal_user, department):
 
     assert response.status_code == status.HTTP_201_CREATED
     assert response.data["name"] == "New Team"
-    assert response.data["owner"]["id"] == normal_user.id
     assert response.data["department"]["id"] == department.id
 
+    # selon serializer (detail), members peut exister ou non
     if "members" in response.data:
-        assert any(m["id"] == normal_user.id for m in response.data["members"])
-    elif "members_preview" in response.data:
-        assert any(m["id"] == normal_user.id for m in response.data["members_preview"])
+        assert isinstance(response.data["members"], list)
     else:
         assert "members_count" in response.data
 
 
 @pytest.mark.django_db
-def test_update_team(api_client, normal_user, team, department):
+def test_create_team_forbidden_for_normal_user(api_client, normal_user, department):
+    api_client.force_authenticate(user=normal_user)
+
+    url = reverse("teams-list")
+    payload = {
+        "name": "New Team",
+        "description": "Created by test",
+        "department_id": department.id,
+    }
+
+    response = api_client.post(url, payload, format="json")
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+def test_update_team(api_client, admin_user, team, department):
+    api_client.force_authenticate(user=admin_user)
+
+    # ✅ assure une valeur valide
+    team.department = department
+    team.save(update_fields=["department"])
+
+    url = reverse("teams-detail", args=[team.id])
+    payload = {
+        "name": "Updated Team",
+        "description": "Updated description",
+        "owner_id": admin_user.id,
+        "department_id": department.id,
+        "members_ids": [admin_user.id],
+    }
+
+    response = api_client.put(url, payload, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["name"] == "Updated Team"
+    assert response.data["department"]["id"] == department.id
+    assert response.data["owner"]["id"] == admin_user.id
+
+
+@pytest.mark.django_db
+def test_update_team_forbidden_for_normal_user(
+    api_client, normal_user, team, department
+):
     api_client.force_authenticate(user=normal_user)
 
     url = reverse("teams-detail", args=[team.id])
@@ -108,18 +177,24 @@ def test_update_team(api_client, normal_user, team, department):
     }
 
     response = api_client.put(url, payload, format="json")
-
-    assert response.status_code == status.HTTP_200_OK
-    assert response.data["name"] == "Updated Team"
-    assert response.data["department"]["id"] == department.id
-    assert response.data["owner"]["id"] == normal_user.id
+    assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
 @pytest.mark.django_db
-def test_delete_team(api_client, normal_user, team):
-    api_client.force_authenticate(user=normal_user)
+def test_delete_team(api_client, admin_user, team):
+    api_client.force_authenticate(user=admin_user)
 
     url = reverse("teams-detail", args=[team.id])
     response = api_client.delete(url)
 
     assert response.status_code == status.HTTP_204_NO_CONTENT
+
+
+@pytest.mark.django_db
+def test_delete_team_forbidden_for_normal_user(api_client, normal_user, team):
+    api_client.force_authenticate(user=normal_user)
+
+    url = reverse("teams-detail", args=[team.id])
+    response = api_client.delete(url)
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN

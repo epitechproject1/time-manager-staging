@@ -2,6 +2,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from departments.models import Department
+from users.constants import UserRole
 from users.models import User
 
 
@@ -17,6 +18,7 @@ def admin_user(db):
         password="password",
         first_name="Admin",
         last_name="User",
+        role=UserRole.ADMIN,
         is_staff=True,
     )
 
@@ -28,6 +30,7 @@ def normal_user(db):
         password="password",
         first_name="Normal",
         last_name="User",
+        role=UserRole.USER,
     )
 
 

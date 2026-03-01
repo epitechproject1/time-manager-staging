@@ -264,11 +264,7 @@ class UserViewSet(ModelViewSet):
         return UserSerializer
 
     def perform_create(self, serializer):
-        """
-        Creation utilisateur + envoi email async
-        """
         user = serializer.save()
-
         raw_password = self.request.data.get("password")
 
         if raw_password:
