@@ -198,3 +198,94 @@ def test_delete_team_forbidden_for_normal_user(api_client, normal_user, team):
     response = api_client.delete(url)
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+def test_teams_stats_breakdown_admin(api_client, admin_user, team, other_team):
+    api_client.force_authenticate(user=admin_user)
+
+    url = reverse("teams-stats-breakdown")
+    res = api_client.get(url)
+
+    assert res.status_code == status.HTTP_200_OK
+    assert isinstance(res.data, list)
+    assert len(res.data) >= 2
+
+    row = res.data[0]
+    assert "id" in row
+    assert "name" in row
+    assert "department_id" in row
+    assert "department__name" in row
+    assert "members_count" in row
+
+
+@pytest.mark.django_db
+def test_teams_stats_breakdown_scoped_owner(api_client, normal_user, team, other_team):
+    """
+    user normal: voit seulement les teams où il est owner/membre/director
+    """
+    api_client.force_authenticate(user=normal_user)
+
+    team.owner = normal_user
+    team.save(update_fields=["owner"])
+
+    other_team.owner = None
+    other_team.save(update_fields=["owner"])
+
+    url = reverse("teams-stats-breakdown")
+    res = api_client.get(url)
+
+    assert res.status_code == status.HTTP_200_OK
+    assert isinstance(res.data, list)
+
+    ids = [r["id"] for r in res.data]
+    assert team.id in ids
+    assert other_team.id not in ids
+
+
+@pytest.mark.django_db
+def test_teams_stats_breakdown_filter_by_department(
+    api_client, admin_user, department, team, other_team
+):
+    api_client.force_authenticate(user=admin_user)
+
+    team.department = department
+    team.save(update_fields=["department"])
+
+    other_team.department = None
+    other_team.save(update_fields=["department"])
+
+    url = reverse("teams-stats-breakdown")
+    res = api_client.get(url, {"department_id": department.id})
+
+    assert res.status_code == status.HTTP_200_OK
+    assert isinstance(res.data, list)
+
+    # doit retourner uniquement team
+    assert len(res.data) == 1
+    assert res.data[0]["id"] == team.id
+    assert res.data[0]["department_id"] == department.id
+
+
+@pytest.mark.django_db
+def test_teams_stats_breakdown_forbidden_when_no_access(
+    api_client, normal_user, team, other_team
+):
+    """
+    user normal sans être owner/membre/director d'aucune team => 403
+    """
+    api_client.force_authenticate(user=normal_user)
+
+    # s'assurer qu'il n'est ni owner ni membre
+    team.owner = None
+    team.save(update_fields=["owner"])
+    team.members.clear()
+
+    other_team.owner = None
+    other_team.save(update_fields=["owner"])
+    other_team.members.clear()
+
+    url = reverse("teams-stats-breakdown")
+    res = api_client.get(url)
+
+    assert res.status_code == status.HTTP_403_FORBIDDEN
