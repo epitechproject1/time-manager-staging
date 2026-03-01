@@ -5,10 +5,13 @@ from clock_event.serializers import ClockEventSerializer
 from .models import ClockValidationCode
 
 
+# ─────────────────────────────────────
+# RESPONSE SERIALIZER
+# ─────────────────────────────────────
 class ClockValidationCodeSerializer(serializers.ModelSerializer):
     """
-    Réponse renvoyée à l'employé après un clock-in ou clock-out.
-    Expose le code, son expiration et le ClockEvent lié.
+    Réponse renvoyée après un clock-in ou clock-out.
+    Expose le code, son expiration et l'événement associé.
     """
 
     clock_event = ClockEventSerializer(read_only=True)
@@ -33,13 +36,13 @@ class ClockValidationCodeSerializer(serializers.ModelSerializer):
         return obj.seconds_remaining
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# SUBMIT
-# ─────────────────────────────────────────────────────────────────────────────
-
-
+# ─────────────────────────────────────
+# SUBMIT CODE SERIALIZER
+# ─────────────────────────────────────
 class SubmitCodeSerializer(serializers.Serializer):
-    """Payload pour soumettre un code de validation."""
+    """
+    Payload pour soumettre un code de validation.
+    """
 
     code = serializers.CharField(
         min_length=6,
@@ -53,3 +56,17 @@ class SubmitCodeSerializer(serializers.Serializer):
                 "Le code doit être composé uniquement de chiffres."
             )
         return value
+
+    def validate(self, data):
+        code = data["code"]
+
+        try:
+            validation = ClockValidationCode.objects.select_related("clock_event").get(
+                code=code,
+                status=ClockValidationCode.Status.PENDING,
+            )
+        except ClockValidationCode.DoesNotExist:
+            raise serializers.ValidationError("Code invalide ou expiré.")
+
+        data["validation"] = validation
+        return data

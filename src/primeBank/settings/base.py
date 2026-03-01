@@ -148,6 +148,9 @@ EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
 EXPIRY_MINUTES = env("EXPIRY_MINUTES", default=3)
 
+CLOCK_IN_TOLERANCE_MINUTES = env("CLOCK_IN_TOLERANCE_MINUTES", default=30)
+CLOCK_OUT_TOLERANCE_MINUTES = env("CLOCK_OUT_TOLERANCE_MINUTES", default=60)
+
 
 EMAIL_HOST = env("EMAIL_HOST", default="smtp.sendgrid.net")
 EMAIL_PORT = env.int("EMAIL_PORT", default=587)
@@ -191,4 +194,6 @@ __all__ = [
     "STATIC_URL",
     "STATIC_ROOT",
     "DEFAULT_AUTO_FIELD",
+    "CLOCK_IN_TOLERANCE_MINUTES",
+    "CLOCK_OUT_TOLERANCE_MINUTES",
 ]

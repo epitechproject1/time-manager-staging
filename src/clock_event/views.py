@@ -4,7 +4,8 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from shift.models import Shift
+from clock_validation.models import ClockValidationCode
+from clock_validation.serializers import ClockValidationCodeSerializer
 
 from .models import ClockEvent
 from .serializers import ClockEventSerializer, ClockInSerializer, ClockOutSerializer
@@ -22,13 +23,14 @@ class ClockEventViewSet(
     GET  /clock-events/{id}/      → détail d'un pointage
     POST /clock-events/clock-in/  → pointer le début d'un shift
     POST /clock-events/clock-out/ → pointer la fin d'un shift
-
-    ⚠️  La validation du pointage se fait via clock_validation.
     """
 
     permission_classes = [IsAuthenticated]
     serializer_class = ClockEventSerializer
 
+    # ─────────────────────────────
+    # QUERYSET
+    # ─────────────────────────────
     def get_queryset(self):
         return (
             ClockEvent.objects.filter(user=self.request.user)
@@ -37,18 +39,24 @@ class ClockEventViewSet(
         )
 
     # ─────────────────────────────
+    # SERIALIZER DYNAMIQUE
+    # ─────────────────────────────
+    def get_serializer_class(self):
+        if self.action == "clock_in":
+            return ClockInSerializer
+        if self.action == "clock_out":
+            return ClockOutSerializer
+        return ClockEventSerializer
+
+    # ─────────────────────────────
     # CLOCK IN
     # ─────────────────────────────
     @action(detail=False, methods=["post"], url_path="clock-in")
     def clock_in(self, request):
-        """
-        Crée un ClockEvent CLOCK_IN en PENDING.
-        Retourne le ClockValidationCode généré automatiquement (code + expiration).
-        """
-        serializer = ClockInSerializer(data=request.data)
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        shift = Shift.objects.get(pk=serializer.validated_data["shift_id"])
+        shift = serializer.validated_data["shift"]
 
         event = ClockEvent.objects.create(
             user=request.user,
@@ -56,10 +64,6 @@ class ClockEventViewSet(
             event_type=ClockEvent.EventType.CLOCK_IN,
             timestamp=timezone.now(),
         )
-
-        # Création du code de validation — délégué au module clock_validation
-        from clock_validation.models import ClockValidationCode
-        from clock_validation.serializers import ClockValidationCodeSerializer
 
         validation = ClockValidationCode.create_for_event(event)
 
@@ -73,14 +77,10 @@ class ClockEventViewSet(
     # ─────────────────────────────
     @action(detail=False, methods=["post"], url_path="clock-out")
     def clock_out(self, request):
-        """
-        Crée un ClockEvent CLOCK_OUT en PENDING.
-        Retourne le ClockValidationCode généré automatiquement (code + expiration).
-        """
-        serializer = ClockOutSerializer(data=request.data)
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        shift = Shift.objects.get(pk=serializer.validated_data["shift_id"])
+        shift = serializer.validated_data["shift"]
 
         event = ClockEvent.objects.create(
             user=request.user,
@@ -88,9 +88,6 @@ class ClockEventViewSet(
             event_type=ClockEvent.EventType.CLOCK_OUT,
             timestamp=timezone.now(),
         )
-
-        from clock_validation.models import ClockValidationCode
-        from clock_validation.serializers import ClockValidationCodeSerializer
 
         validation = ClockValidationCode.create_for_event(event)
 

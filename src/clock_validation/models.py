@@ -6,6 +6,7 @@ from django.db import models
 from django.utils import timezone
 
 from clock_event.models import ClockEvent
+from notifications.services import send_clock_validation_code
 
 EXPIRY_MINUTES = settings.EXPIRY_MINUTES
 
@@ -65,9 +66,6 @@ class ClockValidationCode(models.Model):
             code=code,
             expires_at=expires_at,
         )
-
-        # 📧 Envoi de l'email — import local pour éviter les circular imports
-        from .services import send_clock_validation_code
 
         send_clock_validation_code(
             user=clock_event.user,
