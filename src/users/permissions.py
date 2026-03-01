@@ -1,23 +1,40 @@
-from rest_framework.permissions import SAFE_METHODS, BasePermission
+from rest_framework.permissions import BasePermission
 
 from .constants import UserRole
 
 
-class IsAdminForCreateOtherwiseReadOnly(BasePermission):
+class IsAdminOrOwnerProfile(BasePermission):
     """
-    - Lecture (GET, HEAD, OPTIONS) : utilisateurs authentifiés
-    - Création (POST) : ADMIN uniquement
-    - Modification / suppression : ADMIN uniquement
+    ADMIN / MANAGER : accès total
+
+    USER :
+        - peut retrieve / update / partial_update / destroy son propre profil
+        - ne peut pas accéder à la liste
+        - ne peut pas créer
     """
 
     def has_permission(self, request, view):
-        # Lecture autorisée aux utilisateurs authentifiés
-        if request.method in SAFE_METHODS:
-            return request.user and request.user.is_authenticated
+        if not request.user or not request.user.is_authenticated:
+            return False
 
-        # Création, modification, suppression réservées aux ADMIN
-        return (
-            request.user
-            and request.user.is_authenticated
-            and request.user.role == UserRole.ADMIN
-        )
+        # ✅ Admin et Manager -> accès total
+        if request.user.role in [UserRole.ADMIN, UserRole.MANAGER]:
+            return True
+
+        # ❌ USER → pas accès à la liste
+        if view.action == "list":
+            return False
+
+        # USER → accès à ses actions perso
+        if view.action in ["retrieve", "update", "partial_update", "destroy"]:
+            return True
+
+        return False
+
+    def has_object_permission(self, request, view, obj):
+        # ✅ Admin / Manager → accès total
+        if request.user.role in [UserRole.ADMIN, UserRole.MANAGER]:
+            return True
+
+        # USER → uniquement son propre profil
+        return obj == request.user

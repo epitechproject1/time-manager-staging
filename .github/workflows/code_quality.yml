@@ -1,13 +1,10 @@
 name: Code Quality
 
 on:
-  push:
-    branches:
-      - "**"
   pull_request:
     branches:
-      - "**"
-
+      - develop
+      - main
 jobs:
   quality:
     name: Quality checks

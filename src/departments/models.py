@@ -3,7 +3,7 @@ from django.db import models
 
 
 class Department(models.Model):
-    name = models.CharField(max_length=255)
+    name = models.CharField(max_length=255, unique=True)
     description = models.TextField(blank=True, null=True)
 
     director = models.ForeignKey(
@@ -12,6 +12,7 @@ class Department(models.Model):
         null=True,
         blank=True,
         related_name="directed_departments",
+        verbose_name="Directeur",
     )
 
     is_active = models.BooleanField(default=True)
@@ -20,3 +21,9 @@ class Department(models.Model):
 
     def __str__(self):
         return self.name
+
+    class Meta:
+        db_table = "departments"
+        verbose_name = "Département"
+        verbose_name_plural = "Départements"
+        ordering = ["-created_at"]
