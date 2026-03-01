@@ -54,47 +54,24 @@ def _user_filter_parameters(
 ):
     params = [
         OpenApiParameter(
-            name="q",
-            description="Recherche (nom, prenom, email, telephone, role)",
-            required=False,
-            type=str,
+            "q", description="Recherche globale", required=False, type=str
         ),
         OpenApiParameter(
-            name="role",
-            description="Filtrer par role (ADMIN, MANAGER, USER)",
-            required=False,
-            type=str,
+            "role", description="Filtrer par role", required=False, type=str
         ),
         OpenApiParameter(
-            name="email",
-            description="Filtrer par email (contient)",
-            required=False,
-            type=str,
+            "email", description="Filtrer par email", required=False, type=str
         ),
         OpenApiParameter(
-            name="is_active",
-            description="Filtrer par statut actif (true/false)",
-            required=False,
-            type=bool,
+            "is_active", description="Filtrer par actif", required=False, type=bool
         ),
         OpenApiParameter(
-            name="created_from",
-            description="Date de creation min (YYYY-MM-DD)",
-            required=False,
-            type=str,
+            "created_from", description="Date min", required=False, type=str
         ),
         OpenApiParameter(
-            name="created_to",
-            description="Date de creation max (YYYY-MM-DD)",
-            required=False,
-            type=str,
+            "created_to", description="Date max", required=False, type=str
         ),
-        OpenApiParameter(
-            name="ordering",
-            description="Tri (ex: -created_at, email, role)",
-            required=False,
-            type=str,
-        ),
+        OpenApiParameter("ordering", description="Tri", required=False, type=str),
     ]
 
     if include_page_size:
@@ -123,8 +100,8 @@ def _user_filter_parameters(
     if include_file_format:
         params.append(
             OpenApiParameter(
-                name="file_format",
-                description="Format de sortie (csv|pdf). Par defaut: csv",
+                "file_format",
+                description="csv ou pdf",
                 required=False,
                 type=str,
             )
@@ -135,16 +112,37 @@ def _user_filter_parameters(
 
 @extend_schema_view(
     list=extend_schema(tags=["Users"], summary="Lister les utilisateurs"),
-    retrieve=extend_schema(tags=["Users"], summary="Detail d'un utilisateur"),
-    create=extend_schema(tags=["Users"], summary="Creer un utilisateur"),
-    update=extend_schema(tags=["Users"], summary="Mettre a jour un utilisateur"),
-    partial_update=extend_schema(
-        tags=["Users"], summary="Mettre a jour partiellement un utilisateur"
-    ),
-    destroy=extend_schema(tags=["Users"], summary="Supprimer un utilisateur"),
+    retrieve=extend_schema(tags=["Users"], summary="Detail utilisateur"),
+    create=extend_schema(tags=["Users"], summary="Creer utilisateur"),
+    update=extend_schema(tags=["Users"], summary="Mettre a jour utilisateur"),
+    partial_update=extend_schema(tags=["Users"], summary="Patch utilisateur"),
+    destroy=extend_schema(tags=["Users"], summary="Supprimer utilisateur"),
 )
 class UserViewSet(ModelViewSet):
     permission_classes = [IsAdminOrOwnerProfile]
+
+    # ----------------------------------------------------------------
+    # Queryset & Serializer
+    # ----------------------------------------------------------------
+
+    def get_queryset(self):
+        user = self.request.user
+
+        if user.role == UserRole.ADMIN:
+            return User.objects.all().order_by("-created_at")
+
+        return User.objects.filter(id=user.id)
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return UserCreateSerializer
+        if self.action in ("update", "partial_update"):
+            return UserUpdateSerializer
+        return UserSerializer
+
+    # ----------------------------------------------------------------
+    # Utils
+    # ----------------------------------------------------------------
 
     @staticmethod
     def _parse_bool(value):
@@ -241,46 +239,29 @@ class UserViewSet(ModelViewSet):
             "updated_at",
             "-updated_at",
         }
+
         if ordering and ordering in allowed_ordering:
             queryset = queryset.order_by(ordering)
 
         return queryset, query
 
-    def get_queryset(self):
-        user = self.request.user
-
-        if user.role == UserRole.ADMIN:
-            return User.objects.all().order_by("-created_at")
-
-        return User.objects.filter(id=user.id)
-
-    def get_serializer_class(self):
-        if self.action == "create":
-            return UserCreateSerializer
-
-        if self.action in ("update", "partial_update"):
-            return UserUpdateSerializer
-
-        return UserSerializer
+    # ----------------------------------------------------------------
+    # Hooks
+    # ----------------------------------------------------------------
 
     def perform_create(self, serializer):
-        """
-        Creation utilisateur + envoi email async
-        """
         user = serializer.save()
-
         raw_password = self.request.data.get("password")
 
         if raw_password:
             run_async(send_welcome_email, user, raw_password)
 
-    @extend_schema(summary="Recuperer le profil de l'utilisateur connecte")
-    @action(
-        detail=False,
-        methods=["get"],
-        url_path="me",
-        permission_classes=[IsAuthenticated],
-    )
+    # ----------------------------------------------------------------
+    # Custom actions
+    # ----------------------------------------------------------------
+
+    @extend_schema(summary="Profil utilisateur connecté")
+    @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated])
     def me(self, request):
         serializer = self.get_serializer(request.user)
         return Response(serializer.data)
@@ -290,7 +271,7 @@ class UserViewSet(ModelViewSet):
         summary="Rechercher des utilisateurs",
         parameters=_user_filter_parameters(include_page_size=True, include_page=True),
     )
-    @action(detail=False, methods=["get"], url_path="search")
+    @action(detail=False, methods=["get"])
     def search(self, request):
         queryset = self.get_queryset()
         queryset, query = self._apply_filters(queryset)
@@ -316,27 +297,27 @@ class UserViewSet(ModelViewSet):
 
     @extend_schema(
         tags=["Users"],
-        summary="Exporter des utilisateurs (CSV ou PDF)",
+        summary="Exporter utilisateurs",
         parameters=_user_filter_parameters(include_file_format=True),
     )
-    @action(detail=False, methods=["get"], url_path="export")
+    @action(detail=False, methods=["get"])
     def export(self, request):
         queryset = self.get_queryset()
         queryset, _ = self._apply_filters(queryset)
         queryset = queryset.order_by("id")
 
-        output_format = request.query_params.get("file_format") or "csv"
-        output_format = str(output_format).strip().lower()
+        output_format = (request.query_params.get("file_format") or "csv").lower()
 
         if output_format == "pdf":
             return self._export_pdf(queryset)
         if output_format != "csv":
-            return Response(
-                {"detail": "Format invalide. Utilisez csv ou pdf."},
-                status=400,
-            )
+            return Response({"detail": "Format invalide (csv|pdf)"}, status=400)
 
         return self._export_csv(queryset)
+
+    # ----------------------------------------------------------------
+    # Export helpers
+    # ----------------------------------------------------------------
 
     def _export_csv(self, queryset):
         response = HttpResponse(content_type="text/csv; charset=utf-8")
@@ -355,33 +336,6 @@ class UserViewSet(ModelViewSet):
 
         return response
 
-    @staticmethod
-    def _user_export_values(user):
-        return [
-            user.id,
-            user.first_name,
-            user.last_name,
-            user.email,
-            user.phone_number,
-            user.role,
-            user.is_active,
-            user.last_login,
-            user.created_at,
-            user.updated_at,
-        ]
-
-    @staticmethod
-    def _format_export_values(values):
-        formatted = []
-        for value in values:
-            if value is None:
-                formatted.append("")
-            elif isinstance(value, bool):
-                formatted.append("Oui" if value else "Non")
-            else:
-                formatted.append(str(value))
-        return formatted
-
     def _export_pdf(self, queryset):
         try:
             from reportlab.lib import colors
@@ -395,10 +349,7 @@ class UserViewSet(ModelViewSet):
                 TableStyle,
             )
         except ImportError:
-            return Response(
-                {"detail": "Le package reportlab est requis pour l'export PDF."},
-                status=500,
-            )
+            return Response({"detail": "reportlab requis"}, status=500)
 
         buffer = io.BytesIO()
         document = SimpleDocTemplate(
@@ -417,35 +368,21 @@ class UserViewSet(ModelViewSet):
             styles["Normal"],
         )
 
-        table_headers = [EXPORT_COLUMN_LABELS[column] for column in EXPORT_COLUMNS]
-        table_rows = [table_headers]
+        pdf.setFont("Helvetica-Bold", 13)
+        pdf.drawString(40, y, "Export utilisateurs")
+        y -= 24
+
+        pdf.setFont("Helvetica", 9)
+        pdf.drawString(40, y, f"Total: {queryset.count()}")
+        y -= 22
 
         for user in queryset:
-            row = self._format_export_values(self._user_export_values(user))
-            table_rows.append(row)
+            for line in self._user_export_values(user):
+                pdf.drawString(40, y, str(line))
+                y -= 14
+            y -= 10
 
-        table = Table(table_rows, repeatRows=1)
-        table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F2937")),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("FONTSIZE", (0, 0), (-1, -1), 8),
-                    ("ALIGN", (0, 0), (0, -1), "CENTER"),
-                    ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                    (
-                        "ROWBACKGROUNDS",
-                        (0, 1),
-                        (-1, -1),
-                        [colors.white, colors.HexColor("#F8FAFC")],
-                    ),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ]
-            )
-        )
-
-        document.build([title, subtitle, Spacer(1, 12), table])
+        pdf.save()
         pdf_data = buffer.getvalue()
         buffer.close()
 
@@ -453,3 +390,18 @@ class UserViewSet(ModelViewSet):
         response["Content-Disposition"] = "attachment; filename=users.pdf"
         response.write(pdf_data)
         return response
+
+    @staticmethod
+    def _user_export_values(user):
+        return [
+            user.id,
+            user.first_name,
+            user.last_name,
+            user.email,
+            user.phone_number,
+            user.role,
+            user.is_active,
+            user.last_login,
+            user.created_at,
+            user.updated_at,
+        ]
