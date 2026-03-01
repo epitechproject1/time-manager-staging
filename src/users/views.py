@@ -352,21 +352,6 @@ class UserViewSet(ModelViewSet):
         return response
 
     @staticmethod
-    def _user_export_values(user):
-        return [
-            user.id,
-            user.first_name,
-            user.last_name,
-            user.email,
-            user.phone_number,
-            user.role,
-            user.is_active,
-            user.last_login,
-            user.created_at,
-            user.updated_at,
-        ]
-
-    @staticmethod
     def _format_export_values(values):
         formatted = []
         for value in values:
@@ -449,3 +434,18 @@ class UserViewSet(ModelViewSet):
         response["Content-Disposition"] = "attachment; filename=users.pdf"
         response.write(pdf_data)
         return response
+
+    @staticmethod
+    def _user_export_values(user):
+        return [
+            user.id,
+            user.first_name,
+            user.last_name,
+            user.email,
+            user.phone_number,
+            user.role,
+            user.is_active,
+            user.last_login,
+            user.created_at,
+            user.updated_at,
+        ]
