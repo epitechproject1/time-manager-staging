@@ -11,6 +11,7 @@ from rest_framework.viewsets import ModelViewSet
 
 from contracts.models import Contract
 from contracts.serializers.contract import ContractSerializer
+from users.constants import UserRole
 
 DEFAULT_PAGE_SIZE = 10
 MAX_PAGE_SIZE = 500
@@ -112,7 +113,46 @@ class ContractViewSet(ModelViewSet):
     queryset = Contract.objects.select_related("contract_type", "user").all()
     serializer_class = ContractSerializer
 
+    def get_queryset(self):
+        user = self.request.user
+        queryset = Contract.objects.select_related("contract_type", "user").all()
+
+        if getattr(user, "role", None) == UserRole.ADMIN:
+            return queryset
+
+        return queryset.filter(user=user)
+
+    def _ensure_admin(self, request):
+        if getattr(request.user, "role", None) != UserRole.ADMIN:
+            return Response(
+                {"detail": "Action reservee aux administrateurs."},
+                status=403,
+            )
+        return None
+
+    def create(self, request, *args, **kwargs):
+        denied = self._ensure_admin(request)
+        if denied:
+            return denied
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        denied = self._ensure_admin(request)
+        if denied:
+            return denied
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        denied = self._ensure_admin(request)
+        if denied:
+            return denied
+        return super().partial_update(request, *args, **kwargs)
+
     def destroy(self, request, *args, **kwargs):
+        denied = self._ensure_admin(request)
+        if denied:
+            return denied
+
         instance = self.get_object()
         try:
             self.perform_destroy(instance)
