@@ -194,6 +194,74 @@ def test_user_search_with_filters(api_client, admin_user, normal_user):
 
 
 @pytest.mark.django_db
+def test_user_search_default_page_size_is_10(api_client, admin_user):
+    api_client.force_authenticate(user=admin_user)
+
+    for idx in range(15):
+        User.objects.create_user(
+            email=f"user{idx}@test.com",
+            password=DEFAULT_PASSWORD,
+            first_name=f"User{idx}",
+            last_name="Batch",
+            phone_number=f"06111111{idx:02d}",
+            role=UserRole.USER,
+        )
+
+    response = api_client.get(reverse("user-search"))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["page_size"] == 10
+    assert response.data["total"] >= 15
+    assert len(response.data["data"]) == 10
+
+
+@pytest.mark.django_db
+def test_user_search_custom_page_size(api_client, admin_user):
+    api_client.force_authenticate(user=admin_user)
+
+    for idx in range(30):
+        User.objects.create_user(
+            email=f"limited{idx}@test.com",
+            password=DEFAULT_PASSWORD,
+            first_name=f"Limited{idx}",
+            last_name="Batch",
+            phone_number=f"06222222{idx:02d}",
+            role=UserRole.USER,
+        )
+
+    response = api_client.get(reverse("user-search"), data={"page_size": 5})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["page_size"] == 5
+    assert response.data["total"] >= 30
+    assert len(response.data["data"]) == 5
+
+
+@pytest.mark.django_db
+def test_user_search_pagination_page_2(api_client, admin_user):
+    api_client.force_authenticate(user=admin_user)
+
+    for idx in range(25):
+        User.objects.create_user(
+            email=f"page{idx}@test.com",
+            password=DEFAULT_PASSWORD,
+            first_name=f"Page{idx}",
+            last_name="Batch",
+            phone_number=f"06333333{idx:02d}",
+            role=UserRole.USER,
+        )
+
+    response = api_client.get(reverse("user-search"), data={"page_size": 10, "page": 2})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["page"] == 2
+    assert response.data["page_size"] == 10
+    assert response.data["total"] >= 25
+    assert response.data["total_pages"] >= 3
+    assert len(response.data["data"]) == 10
+
+
+@pytest.mark.django_db
 def test_user_export_pdf(api_client, admin_user):
     api_client.force_authenticate(user=admin_user)
 
@@ -202,3 +270,41 @@ def test_user_export_pdf(api_client, admin_user):
     assert response.status_code == status.HTTP_200_OK
     assert response["Content-Type"] == "application/pdf"
     assert "users.pdf" in response["Content-Disposition"]
+
+
+@pytest.mark.django_db
+def test_user_export_csv_structured_headers(api_client, admin_user):
+    api_client.force_authenticate(user=admin_user)
+
+    response = api_client.get(reverse("user-export"), data={"file_format": "csv"})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response["Content-Type"].startswith("text/csv")
+    assert "users.csv" in response["Content-Disposition"]
+
+    content = response.content.decode("utf-8-sig").splitlines()
+    first_line = content[0]
+    second_line = content[1]
+    assert ";" in first_line
+    assert first_line == "sep=;"
+    assert "ID;Prenom;Nom;Email" in second_line
+
+
+@pytest.mark.django_db
+def test_user_export_csv_is_sorted_by_id_asc(api_client, admin_user):
+    api_client.force_authenticate(user=admin_user)
+
+    response = api_client.get(reverse("user-export"), data={"file_format": "csv"})
+
+    assert response.status_code == status.HTTP_200_OK
+    lines = response.content.decode("utf-8-sig").splitlines()
+    data_lines = lines[2:]  # ligne sep + header
+    ids = []
+    for line in data_lines:
+        if not line.strip():
+            continue
+        first_col = line.split(";")[0].strip()
+        if first_col.isdigit():
+            ids.append(int(first_col))
+
+    assert ids == sorted(ids)
