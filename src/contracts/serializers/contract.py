@@ -15,6 +15,7 @@ class ContractSerializer(serializers.ModelSerializer):
         source="contract_type", read_only=True
     )
     user_detail = UserSerializer(source="user", read_only=True)
+    status = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Contract
@@ -27,9 +28,30 @@ class ContractSerializer(serializers.ModelSerializer):
             "start_date",
             "end_date",
             "weekly_hours_target",
+            "status",
             "created_at",
         ]
         read_only_fields = ["created_at"]
+
+    @staticmethod
+    def get_status(obj):
+        """
+        Retourne le statut du contrat pour l'affichage frontend.
+        """
+        if not obj.end_date:
+            return "active"
+
+        from datetime import date
+
+        today = date.today()
+        if obj.end_date < today:
+            return "expired"
+
+        days_left = (obj.end_date - today).days
+        if days_left <= 30:
+            return "expiring_soon"
+
+        return "active"
 
     def validate(self, data):
         """
