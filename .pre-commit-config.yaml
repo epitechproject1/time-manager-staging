@@ -18,3 +18,7 @@ repos:
       - id: flake8
         pass_filenames: false
         args: ["src"]
+<<<<<<< Updated upstream
+=======
+
+>>>>>>> Stashed changes

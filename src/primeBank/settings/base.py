@@ -1,6 +1,6 @@
+import os
 from pathlib import Path
 
-import environ
 from dotenv import load_dotenv
 
 # =============================================================================
@@ -9,23 +9,22 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-# Charge le .env en local / docker-compose (env_file)
 load_dotenv()
-env = environ.Env()
 
 # =============================================================================
 # SECURITY
 # =============================================================================
 
-SECRET_KEY = env("SECRET_KEY", default=None)
+SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
     raise RuntimeError("SECRET_KEY is not set")
 
-DEBUG = env.bool("DEBUG", default=False)
+DEBUG = False
 
-AUTH_USER_MODEL = "users.User"
-
-ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
+ALLOWED_HOSTS = os.getenv(
+    "ALLOWED_HOSTS",
+    "localhost,127.0.0.1",
+).split(",")
 
 # =============================================================================
 # APPLICATIONS
@@ -38,29 +37,13 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    # --- 3rd Party Apps ---
-    "corsheaders",  # <--- [1] AJOUT OBLIGATOIRE ICI
     "rest_framework",
     "rest_framework.authtoken",
     "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
-    # --- Local Apps ---
     "primeBank",
-    "jwt_auth",
-    "users",
-    "contracts",
-    "notifications",
-    "permissions",
-    "departments",
-    "reset_password",
-    "teams",
-    "shift",
-    "week_pattern",
-    "time_slot_pattern",
-    "assignment",
-    "override",
-    "clock_event",
-    "clock_validation",
+    "comments",
+    "plannings",
 ]
 
 # =============================================================================
@@ -70,14 +53,12 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
-    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
-
 
 # =============================================================================
 # URLS / WSGI
@@ -107,14 +88,14 @@ TEMPLATES = [
 ]
 
 # =============================================================================
-# DATABASE
+# DATABASE (DEV PAR DÉFAUT)
 # =============================================================================
 
 DATABASES = {
-    "default": env.db(
-        "DATABASE_URL",
-        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
-    )
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "db.sqlite3",
+    }
 }
 
 # =============================================================================
@@ -141,42 +122,13 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # =============================================================================
-# EMAIL (SMTP)
-# =============================================================================
-
-EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-
-EXPIRY_MINUTES = env("EXPIRY_MINUTES", default=3)
-
-
-EMAIL_HOST = env("EMAIL_HOST", default="smtp.sendgrid.net")
-EMAIL_PORT = env.int("EMAIL_PORT", default=587)
-EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
-
-EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
-EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
-
-DEFAULT_FROM_EMAIL = env(
-    "DEFAULT_FROM_EMAIL",
-    default="PrimeBank <no-reply@primebank.com>",
-)
-
-# =============================================================================
-# EXPORTS EXPLICITES
+# EXPORTS EXPLICITES (OBLIGATOIRES)
 # =============================================================================
 
 __all__ = [
     "BASE_DIR",
     "SECRET_KEY",
-    "EMAIL_BACKEND",
-    "EMAIL_HOST",
-    "EMAIL_PORT",
-    "EMAIL_USE_TLS",
-    "EMAIL_HOST_USER",
-    "EMAIL_HOST_PASSWORD",
-    "EXPIRY_MINUTES",
     "DEBUG",
-    "AUTH_USER_MODEL",
     "ALLOWED_HOSTS",
     "INSTALLED_APPS",
     "MIDDLEWARE",
