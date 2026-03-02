@@ -1,33 +1,54 @@
 services:
+  init-env:
+    image: bash:5.2
+    container_name: timemanager_init_env
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    command: ["bash", "-lc", "chmod +x docker/generate_env.sh && ./docker/generate_env.sh"]
+
   db:
     image: postgres:16
     container_name: timemanager_db
-    ports:
-      - "5432:5432"
+    depends_on:
+      init-env:
+        condition: service_completed_successfully
+    env_file:
+      - .env
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-timemanager}
-      POSTGRES_USER: ${POSTGRES_USER:-timemanager_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-timemanager_pass}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./db_init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
-      retries: 15
+      retries: 20
 
   web:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: timemanager-backend:local
     container_name: timemanager_web
-    env_file:
-      - .env
     depends_on:
+      init-env:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
+    env_file:
+      - .env
     volumes:
       - static_data:/vol/static
       - media_data:/vol/media
-    entrypoint: ["/bin/sh", "/app/docker/entrypoint.sh"]
+      # monte ton entrypoint local (pratique si tu le modifies sans rebuild)
+      - ./docker/entrypoint.sh:/app/docker/entrypoint.sh:ro
+    ports:
+      - "8000:8000"
+    entrypoint: ["/bin/bash", "/app/docker/entrypoint.sh"]
     command: ["gunicorn", "primeBank.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3"]
 
   nginx:
